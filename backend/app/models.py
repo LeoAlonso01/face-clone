@@ -1,6 +1,13 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
-from .main import Base
+from .database import Base
+import datetime
+from sqlalchemy import Boolean
+from enum import Enum as PyEnum
+
+class UserRoles(PyEnum):
+    USER = "USER"
+    ADMIN = "ADMIN"
 
 class User(Base):
     __tablename__ = "users"
@@ -9,7 +16,10 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     password = Column(String)
-
+    created_at = Column(DateTime, default=datetime.datetime.now)
+    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    is_deleted = Column(Boolean, default=False) # Soft delete
+    role = Column(Enum(UserRoles), default=UserRoles.USER)
     posts = relationship("Post", back_populates="owner")
 
 class Post(Base):
