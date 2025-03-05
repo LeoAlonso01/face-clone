@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .database import Base, engine, SessionLocal
+from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from .auth import (
@@ -13,7 +14,8 @@ from .auth import (
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Define the expiration time for the access token
 from .models import User, UserRoles
-from .database import SessionLocal, engine
+from .database import SessionLocal, engine, Base
+from sqlalchemy.orm import Session
 USER = "USER"
 ADMIN = "ADMIN"
 
@@ -31,6 +33,26 @@ app = FastAPI(lifespan=lifespan)
 def read_root():
     return {"message": "Bienvenido a Facebook Clone!"}
 
+# ruta para traer datos de contraloria
+@app.get("/usuarios_contraloria")
+def contraloria_users():
+    users = []
+    # conexion a la bd postgres local
+    db = f"postgresql://contraloria:c0ntr4l0r14@host.docker.internal:5432/contraloria"
+    # consulta a la bd local
+    try:
+        engine = create_engine(db)
+        with engine.connect() as connection:
+            query = text("SELECT nombre, email, username FROM public.viewmat_situm_dep_usuarios")
+            result = connection.execute(query)
+            # Obtener los nombres de las columnas
+            columns = result.keys()
+            # Convertir los resultados en una lista de diccionarios
+            users = [dict(zip(columns, row)) for row in result.fetchall()]
+    except Exception as e:
+        print(e)
+    return users
+    
 # Ruta para el registro de usuarios
 @app.post("/register")
 def register(username: str, email: str, password: str, role: UserRoles = UserRoles.USER):  # Usa UserRoles.USER
