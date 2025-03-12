@@ -1,9 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Body
+from fastapi import FastAPI, HTTPException, Depends, status, Body 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .database import Base, engine, SessionLocal
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
 from datetime import timedelta
+from enum import Enum
 from .auth import (
     authenticate_user,
     create_access_token,
@@ -27,6 +29,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# Configuracion de CORS
+origins = ["*"]
+
+# configuracion del midelware de CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Orígenes permitidos
+    allow_credentials=True,
+    allow_methods=["*"],  # Métodos HTTP permitidos (GET, POST, etc.)
+    allow_headers=["*"],  # Encabezados permitidos
+)
 
 # ruta principal
 @app.get("/")
@@ -80,8 +93,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     # Crear el token de acceso
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username, "user_id": user.id},  # Agrega el ID del usuario
-        expires_delta=access_token_expires
+    data={
+        "sub": user.username,
+        "user_id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "role": user.role.value if isinstance(user.role, Enum) else user.role.name  # Incluye el rol en el payload
+    },
+    expires_delta=access_token_expires
     )
     
     # Devolver la respuesta
