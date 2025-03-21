@@ -24,10 +24,6 @@ jobs:
         echo "POSTGRES_HOST=${{ secrets.POSTGRES_HOST }}" >> .env
         echo "POSTGRES_PORT=${{ secrets.POSTGRES_PORT }}" >> .env
 
-    - name: Build and push Docker images (opcional)
-      run: |
-        docker-compose -f docker-compose.yml build
-        docker-compose -f docker-compose.yml push
 
     - name: Deploy using Docker Compose
       run: |
@@ -35,4 +31,4 @@ jobs:
 
     - name: Notify deployment status
       run: |
-        echo "Deployment completed!" 
+        echo "Deployment completed!"
