@@ -4,10 +4,28 @@ from .database import Base
 import datetime
 from sqlalchemy import Boolean
 from enum import Enum as PyEnum
+from pydantic import BaseModel
 
 class UserRoles(PyEnum):
     USER = "USER"
     ADMIN = "ADMIN"
+
+class UserResponse(BaseModel):
+    username: str
+    email: str
+    role: UserRoles
+    is_deleted: bool
+
+    class Config:
+        orm_mode = True
+
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    password: str
+
+    class Config:
+        orm_mode = True
 
 class User(Base):
     __tablename__ = "users"

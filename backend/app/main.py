@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Body 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from .database import Base, engine, SessionLocal
+from .database import Base, engine
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
@@ -12,179 +12,186 @@ from .auth import (
     get_current_user,
     get_password_hash,
     verify_password,
-    get_admin_user
+    get_admin_user,
+    
 )
-ACCESS_TOKEN_EXPIRE_MINUTES = 30  # Define the expiration time for the access token
-from .models import User, UserRoles
-from .database import SessionLocal, engine, Base
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+from .models import User, UserRoles, UserCreate, UserResponse
+from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session
+from contextlib import contextmanager
+from fastapi.encoders import jsonable_encoder
+
 USER = "USER"
 ADMIN = "ADMIN"
+
+# Context manager mejorado
+@contextmanager
+def session_scope():
+    """Proporciona un ámbito transaccional alrededor de una serie de operaciones."""
+    session = SessionLocal()  # Usamos SessionLocal en lugar de Session()
+    try:
+        yield session
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error de base de datos: {str(e)}"
+        ) from e
+    finally:
+        session.close()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     yield
 
-
 app = FastAPI(lifespan=lifespan)
 
-# Configuracion de CORS
-origins = ["*"]
-
-# configuracion del midelware de CORS
+# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Orígenes permitidos
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Métodos HTTP permitidos (GET, POST, etc.)
-    allow_headers=["*"],  # Encabezados permitidos
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# ruta principal
 @app.get("/")
 def read_root():
     return {"message": "Bienvenido a Facebook Clone!"}
 
-# ruta para traer datos de contraloria
 @app.get("/usuarios_contraloria")
 def contraloria_users():
     users = []
-    # conexion a la bd postgres local
-    db = f"postgresql://contraloria:c0ntr4l0r14@host.docker.internal:5432/contraloria"
-    # consulta a la bd local
+    db_url = "postgresql://contraloria:c0ntr4l0r14@host.docker.internal:5432/contraloria"
     try:
-        engine = create_engine(db)
+        engine = create_engine(db_url)
         with engine.connect() as connection:
             query = text("SELECT nombre, email, username FROM public.viewmat_situm_dep_usuarios")
             result = connection.execute(query)
-            # Obtener los nombres de las columnas
-            columns = result.keys()
-            # Convertir los resultados en una lista de diccionarios
-            users = [dict(zip(columns, row)) for row in result.fetchall()]
+            users = [dict(zip(result.keys(), row)) for row in result.fetchall()]
     except Exception as e:
-        print(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al conectar con contraloría: {str(e)}"
+        )
     return users
     
-# Ruta para el registro de usuarios
 @app.post("/register")
-def register(username: str, email: str, password: str, role: UserRoles = UserRoles.USER):  # Usa UserRoles.USER
-    db = SessionLocal()
-    hashed_password = get_password_hash(password)
-    db_user = User(username=username, email=email, password=hashed_password, role=role)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return {"message": "Usuario registrado exitosamente"}
+def register(username: str, email: str, password: str, role: UserRoles = UserRoles.USER):
+    with session_scope() as db:
+        # Verificar si el usuario ya existe
+        existing_user = db.query(User).filter(User.username == username).first()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El nombre de usuario ya está en uso"
+            )
+            
+        existing_email = db.query(User).filter(User.email == email).first()
+        if existing_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El correo electrónico ya está en uso"
+            )
+            
+        hashed_password = get_password_hash(password)
+        db_user = User(username=username, email=email, password=hashed_password, role=role)
+        db.add(db_user)
+        db.flush()  # Para obtener el ID si es necesario
+        return {"message": "Usuario registrado exitosamente"}
 
-# Ruta para el inicio de sesión
 @app.post("/token")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    db = SessionLocal()
-    
-    # Autenticar al usuario
-    user = authenticate_user(db, form_data.username, form_data.password)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Nombre de usuario o contraseña incorrectos",
+    with session_scope() as db:
+        user = authenticate_user(db, form_data.username, form_data.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Nombre de usuario o contraseña incorrectos",
+            )
+        
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={
+                "sub": user.username,
+                "user_id": user.id,
+                "email": user.email,
+                "username": user.username,
+                "role": user.role.value if isinstance(user.role, Enum) else user.role
+            },
+            expires_delta=access_token_expires
         )
-    
-    # Crear el token de acceso
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-    data={
-        "sub": user.username,
-        "user_id": user.id,
-        "email": user.email,
-        "username": user.username,
-        "role": user.role.value if isinstance(user.role, Enum) else user.role.name  # Incluye el rol en el payload
-    },
-    expires_delta=access_token_expires
-    )
-    
-    # Devolver la respuesta
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user_id": user.id,
-        "username": user.username,
-        "email": user.email,
-        "role": user.role
-    }
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role
+        }
 
-# ruta para obtener todos los usuarios
-@app.get("/users")
-def get_users(skip: int = 0, limit: int = 10, current_user: User = Depends(get_current_user)):
-    db = SessionLocal()
-    users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
-    return users
+@app.get("/users", response_model=list[UserResponse])
+def get_users(skip: int = 0, 
+        limit: int = 10, 
+        current_user: User = Depends(get_current_user)):
+    with session_scope() as db:
+        users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
+        return jsonable_encoder(users)
 
-# ruta para obtener un usuario por ID
 @app.get("/users/{user_id}")
 def read_user(user_id: int, current_user: User = Depends(get_current_user)):
-    db = SessionLocal()
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return current_user
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+        if user is None:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        return jsonable_encoder(user)
 
-# ruta para hacer un softdelete de un usuario
 @app.delete("/users/{user_id}")
 def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user)):
-    db = SessionLocal()
-    user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
-    user.is_deleted = True
-    db.commit()
-    return {"message": "Usuario marcado como eliminado"}
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado",
+            )
+        user.is_deleted = True
+        return {"message": "Usuario marcado como eliminado"}
 
-# ruta para acttualizar la contraseña de un usuario
 @app.put("/users/{user_id}/change-password")
 def change_password(
     user_id: int,
     current_password: str = Body(...),
     new_password: str = Body(...),
-    current_user: User = Depends(get_current_user),  # Verifica que el usuario esté autenticado
+    current_user: User = Depends(get_current_user),
 ):
-    db = SessionLocal()
-    
-    # Buscar al usuario en la base de datos
-    user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Usuario no encontrado",
-        )
+    with session_scope() as db:
+        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado",
+            )
 
-    # Verificar que la contraseña actual sea correcta
-    if not verify_password(current_password, user.password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Contraseña actual incorrecta",
-        )
-    
-    if current_user.id != user.id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No tienes permiso para realizar esta acción",
-        )
+        if not verify_password(current_password, user.password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Contraseña actual incorrecta",
+            )
+        
+        if current_user.id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No tienes permiso para realizar esta acción",
+            )
 
-    # Actualizar la contraseña
-    user.password = get_password_hash(new_password)
-    db.commit()
+        user.password = get_password_hash(new_password)
+        return {"message": "Contraseña actualizada exitosamente"}
 
-    print(f"Usuario autenticado: {current_user.username}")
-    print(f"Usuario a modificar: {user.username}")
-    print(f"Contraseña actual correcta: {verify_password(current_password, user.password)}")
-    
-    return {"message": "Contraseña actualizada exitosamente"}
-
-# ruta protegida para obtener informacion de usuario
 @app.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
-    return current_user
+    return current_user.to_dict()

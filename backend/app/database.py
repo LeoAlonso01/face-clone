@@ -17,8 +17,22 @@ settings = Settings()
 
 DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
 
-engine = create_engine(DATABASE_URL)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,           # Número de conexiones mantenidas
+    max_overflow=20,        # Máximo que puede crear sobre el pool_size
+    pool_timeout=30,        # Tiempo de espera para obtener conexión
+    pool_recycle=3600       # Reciclar conexiones después de 1 hora
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+# Context manager para sesiones
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
