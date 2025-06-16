@@ -39,6 +39,7 @@ class User(Base):
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER)
     posts = relationship("Post", back_populates="owner")
+    unidades_a_cargo = relationship("UnidadResponsable", back_populates="usuario_responsable")
 
 class Post(Base):
     __tablename__ = "posts"
@@ -49,3 +50,30 @@ class Post(Base):
     created_at = Column(DateTime)
 
     owner = relationship("User", back_populates="posts")
+
+# This is the model for Unidad Responsable
+# It represents a responsible unit in the system, such as a department or office.
+class UnidadResponsable(Base):
+    __tablename__ = "unidades_responsables"
+
+    id_unidad = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(255), nullable=False)
+    telefono = Column(String(20))
+    domicilio = Column(String(255))
+    municipio = Column(String(100))
+    localidad = Column(String(100))
+    codigo_postal = Column(String(10))
+    rfc = Column(String(13))
+    correo_electronico = Column(String(100))
+    responsable = Column(Integer, ForeignKey('users.id'), nullable=True)  # Modificado
+    tipo_unidad = Column(String(50))
+    fecha_creacion = Column(DateTime, default=datetime.datetime.now)
+    fecha_cambio = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    # columna de jerarquía para relacionar unidades responsables
+    unidad_padre_id = Column(Integer, ForeignKey("unidades_responsables.id_unidad"), nullable=True)
+    # Relacion
+    dependientes = relationship("UnidadResponsable", back_populates="padre")
+    # Relación con UnidadResponsable
+    padre = relationship("UnidadResponsable", remote_side=[id_unidad], back_populates="dependientes")
+    # Relación con User
+    usuario_responsable = relationship("User", back_populates="unidades_a_cargo") # Relación con User

@@ -1,6 +1,6 @@
 # schemas.py
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
@@ -42,3 +42,40 @@ class UserUpdate(BaseModel):
     unidad_responsable_id: Optional[str] = None
     domicilio: Optional[str] = None
     telefono: Optional[str] = None
+
+# Esquema para Unidad Responsable
+# Es una unidad responsable en el sistema, como un departamento u oficina.
+class UnidadResponsableBase(BaseModel):
+    nombre: str
+    telefono: Optional[str] = None
+    domicilio: Optional[str] = None
+    municipio: Optional[str] = None
+    localidad: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    rfc: Optional[str] = None
+    correo_electronico: Optional[str] = None
+    responsable: Optional[int] = None  # Ahora es ID de usuario
+    tipo_unidad: Optional[str] = None
+    unidad_padre_id: Optional[int] = None  # ID de la unidad responsable padre
+
+    class Config:
+        orm_mode = True
+
+# Esquema para creación de Unidad Responsable
+class UnidadResponsableCreate(UnidadResponsableBase):
+    pass
+
+# Esquema para actualización de Unidad Responsable
+class UnidadResponsableUpdate(UnidadResponsableBase):
+    pass
+
+# Esquema para respuesta de Unidad Responsable
+class UnidadResponsableResponse(UnidadResponsableBase):
+    id_unidad: int
+    nombre: str
+    fecha_creacion: Optional[datetime] = None
+    fecha_cambio: Optional[datetime] = None
+    dependientes: List[UnidadResponsableBase] = [] 
+
+    class Config:
+        orm_mode = True
