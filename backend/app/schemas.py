@@ -79,3 +79,21 @@ class UnidadResponsableResponse(UnidadResponsableBase):
 
     class Config:
         orm_mode = True
+
+class ResponsableResumen(BaseModel):
+    id: int
+    username: str
+    email: str
+
+    class Config:
+        orm_mode = True
+
+class UnidadJerarquicaResponse(BaseModel):
+    id_unidad: int
+    nombre: str
+    tipo_unidad: Optional[str]
+    nivel: int
+    responsable: Optional[ResponsableResumen]
+
+    class Config:
+        orm_mode = True

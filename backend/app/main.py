@@ -18,9 +18,10 @@ from .auth import (
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import User, UserRoles, UserCreate, UserResponse, UnidadResponsable
-from .schemas import UnidadResponsableBase, UnidadResponsableResponse, UnidadResponsableCreate
+from .schemas import UnidadResponsableBase, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import text
 from contextlib import contextmanager
 from fastapi.encoders import jsonable_encoder
 
@@ -55,7 +56,8 @@ origins = [
     "http://localhost",
     "http://localhost:5173",  # Asumiendo que tu front corre aquí
     "http://148.216.111.144",
-    "http://localhost:3000" # Si tienes otro puerto o dominio para el front
+    "http://localhost:3000", # Si tienes otro puerto o dominio para el front
+    "192.168.0.124:3000"
 ]
 
 # Configuración de CORS
@@ -169,7 +171,7 @@ def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user))
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Usuario no encontrado",
             )
-        user.is_deleted = True
+        setattr(user, "is_deleted", True)
         return {"message": "Usuario marcado como eliminado"}
 
 @app.put("/users/{user_id}/change-password")
@@ -187,24 +189,79 @@ def change_password(
                 detail="Usuario no encontrado",
             )
 
-        if not verify_password(current_password, user.password):
+        if not verify_password(current_password, getattr(user, "password")):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Contraseña actual incorrecta",
             )
         
-        if current_user.id != user.id:
+        if getattr(current_user, "id", None) != getattr(user, "id", None):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="No tienes permiso para realizar esta acción",
             )
 
-        user.password = get_password_hash(new_password)
+        setattr(user, "password", get_password_hash(new_password))
         return {"message": "Contraseña actualizada exitosamente"}
 
 @app.get("/me")
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user.to_dict()
+
+# endpoint para arbol jerarquico de unidades responsables
+@app.get("/unidades_jerarquicas", response_model=List[UnidadJerarquicaResponse], tags=["Jerarquía de Unidades Responsables"])
+def unidades_jerarquicas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+
+    # Asegúrate de comparar el valor real, no el objeto columna
+    user_role = current_user.role.value if isinstance(current_user.role, Enum) else str(current_user.role)
+    if user_role != UserRoles.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para acceder a esta información"
+        )
+    
+    sql = text("""
+        WITH RECURSIVE jerarquia AS (
+            SELECT 
+                u.id_unidad, u.nombre, u.tipo_unidad, u.unidad_padre_id, 0 as nivel,
+                u.responsable as responsable_id
+            FROM unidades_responsables u
+            WHERE unidad_padre_id IS NULL
+            UNION ALL
+            SELECT 
+                u.id_unidad, u.nombre, u.tipo_unidad, u.unidad_padre_id, j.nivel + 1,
+                u.responsable as responsable_id
+            FROM unidades_responsables u
+            JOIN jerarquia j ON u.unidad_padre_id = j.id_unidad
+        )
+        SELECT 
+            j.id_unidad, j.nombre, j.tipo_unidad, j.nivel, 
+            us.id as responsable_id, us.username, us.email
+        FROM jerarquia j
+        LEFT JOIN users us ON j.responsable_id = us.id
+        ORDER BY j.nivel, j.nombre;
+    """)
+    result = db.execute(sql).fetchall()
+
+    unidades = []
+    for row in result:
+        responsable = None
+        if row.responsable_id:
+            responsable = {
+                "id": row.responsable_id,
+                "username": row.username,
+                "email": row.email
+            }
+
+        unidades.append({
+            "id_unidad": row.id_unidad,
+            "nombre": row.nombre,
+            "tipo_unidad": row.tipo_unidad,
+            "nivel": row.nivel,
+            "responsable": responsable
+        })
+
+    return unidades
 
 @app.get("/unidades_responsables", response_model=List[UnidadResponsableResponse])
 def read_unidades(
@@ -221,9 +278,9 @@ def read_unidades(
         
         # Aplicación de filtros
         if id_unidad:
-            query = query.filter(UnidadResponsableBase.id_unidad == id_unidad)
+            query = query.filter(UnidadResponsable.id_unidad == id_unidad)
         if nombre:
-            query = query.filter(UnidadResponsableBase.nombre.ilike(f"%{nombre}%"))
+            query = query.filter(UnidadResponsable.nombre.ilike(f"%{nombre}%"))
         
         # Ejecución de la consulta
         unidades_db = query.offset(skip).limit(limit).all()
@@ -273,14 +330,12 @@ def asignar_responsable(
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     # Asignar responsable
-    db_unidad.responsable = usuario_id
+    db_unidad.responsable_id = usuario_id  # Usa el nombre correcto del campo FK en tu modelo
     db.commit()
     db.refresh(db_unidad)
     
     return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
 
-
-    
 @app.get("/acta_entrega_recepcion")
 def acta_entrega_recepcion():
     return {"message": "Acta de Entrega Recepción"}
@@ -288,3 +343,4 @@ def acta_entrega_recepcion():
 @app.get("/anexos")
 def anexos():
     return {"message": "Anexos de Entrega Recepción"}
+
