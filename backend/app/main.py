@@ -27,6 +27,7 @@ from fastapi.encoders import jsonable_encoder
 
 USER = "USER"
 ADMIN = "ADMIN"
+AUDITOR = "AUDITOR"
 
 # Context manager mejorado
 @contextmanager
@@ -57,7 +58,9 @@ origins = [
     "http://localhost:5173",  # Asumiendo que tu front corre aquí
     "http://148.216.111.144",
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
-    "192.168.0.124:3000"
+    "192.168.0.124:3000",
+    "*://*/*",  # Permitir todas las solicitudes de cualquier origen
+    "*" # Permitir todas las solicitudes de cualquier origen
 ]
 
 # Configuración de CORS
