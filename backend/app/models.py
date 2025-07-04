@@ -9,7 +9,7 @@ from pydantic import BaseModel
 class UserRoles(PyEnum):
     USER = "USER"
     ADMIN = "ADMIN"
-    AUDIROR = "AUDITOR"
+    AUDITOR = "AUDITOR"
 
 class UserResponse(BaseModel):
     username: str
