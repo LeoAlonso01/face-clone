@@ -9,11 +9,12 @@ from pydantic import BaseModel
 class UserRoles(PyEnum):
     USER = "USER"
     ADMIN = "ADMIN"
+    AUDIROR = "AUDITOR"
 
 class UserResponse(BaseModel):
     username: str
     email: str
-    role: UserRoles
+    role: UserRoles | None
     is_deleted: bool
 
     class Config:
@@ -23,6 +24,17 @@ class UserCreate(BaseModel):
     username: str
     email: str
     password: str
+
+    class Config:
+        orm_mode = True
+
+# class UserUpdate(BaseModel):
+class UserUpdate(BaseModel):
+    username: str | None = None
+    email: str | None = None
+    password: str | None = None
+    role: UserRoles | None = None
+    is_deleted: bool | None = None
 
     class Config:
         orm_mode = True
@@ -37,7 +49,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.datetime.now)
     updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
     is_deleted = Column(Boolean, default=False) # Soft delete
-    role = Column(Enum(UserRoles), default=UserRoles.USER)
+    role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     posts = relationship("Post", back_populates="owner")
     unidades_a_cargo = relationship("UnidadResponsable", back_populates="usuario_responsable")
 

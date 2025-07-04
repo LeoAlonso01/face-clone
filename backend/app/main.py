@@ -18,7 +18,7 @@ from .auth import (
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import User, UserRoles, UserCreate, UserResponse, UnidadResponsable
-from .schemas import UnidadResponsableBase, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse
+from .schemas import UnidadResponsableBase, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import text
@@ -94,38 +94,59 @@ def contraloria_users():
         )
     return users
     
-@app.post("/register")
-def register(username: str, email: str, password: str, role: UserRoles = UserRoles.USER):
+@app.post("/register", status_code=status.HTTP_201_CREATED)
+def register(user: UserCreate):
     with session_scope() as db:
-        # Verificar si el usuario ya existe
-        existing_user = db.query(User).filter(User.username == username).first()
+        # ✅ Aquí el error: estaba comparando con el objeto completo
+        existing_user = db.query(User).filter(User.username == user.username).first()
         if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="El nombre de usuario ya está en uso"
             )
-            
-        existing_email = db.query(User).filter(User.email == email).first()
+
+        existing_email = db.query(User).filter(User.email == user.email).first()
         if existing_email:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="El correo electrónico ya está en uso"
             )
-            
-        hashed_password = get_password_hash(password)
-        db_user = User(username=username, email=email, password=hashed_password, role=role)
+
+        hashed_password = get_password_hash(user.password)
+        db_user = User(
+            username=user.username,
+            email=user.email,
+            password=hashed_password,
+            role= None # asignar sin valor por defecto
+        )
         db.add(db_user)
-        db.flush()  # Para obtener el ID si es necesario
+        db.flush()
         return {"message": "Usuario registrado exitosamente"}
 
 @app.post("/token")
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     with session_scope() as db:
+        # Verificar si el usuario existe y la contraseña es correcta
         user = authenticate_user(db, form_data.username, form_data.password)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Nombre de usuario o contraseña incorrectos",
+            )
+        
+            # comprobar si el usuario tiene un rol asignado
+        if user.role is None:
+            # Si el rol es None, significa que no se ha asignado un rol
+            raise HTTPException(
+                status_code=403,
+                detail="Este usuario aun no tiene un rol asignado, Solicta acceso a un administrador"
+            )
+        
+        # Comprobar si el isdeleted es True
+        if user.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Usuario eliminado, no puedes iniciar sesión"
             )
         
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)

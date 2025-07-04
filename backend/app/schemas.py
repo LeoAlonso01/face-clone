@@ -7,24 +7,31 @@ from enum import Enum
 class UserRoles(str, Enum):
     USER = "USER"
     ADMIN = "ADMIN"
+    AUDITOR = "AUDITOR"
 
 # Esquema base para usuario
 class UserBase(BaseModel):
     username: str
     email: str
-    role: UserRoles = UserRoles.USER
-    nombre: str
-    unidad_responsable_id: Optional[str] = None
+    # role optional sin valor por defecto
+    role: Optional[UserRoles] = None
+    """ unidad_responsable_id: Optional[str] = None
     domicilio: Optional[str] = None
-    telefono: Optional[str] = None
+    telefono: Optional[str] = None """
 
 # Esquema para creación de usuario (incluye password)
 class UserCreate(UserBase):
+    username: str
+    email: str
     password: str
+    role: Optional[UserRoles] = None  # Ahora es opcional sin valor por defecto
 
 # Esquema para respuesta (sin password)
 class UserResponse(UserBase):
     id: int
+    username: str
+    email: str
+    role: Optional[UserRoles] = None  # Ahora es opcional sin valor por defecto
     created_at: datetime
     updated_at: datetime
     is_deleted: bool
@@ -38,10 +45,10 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     password: Optional[str] = None
     role: Optional[UserRoles] = None
-    nombre: Optional[str] = None
+    """ nombre: Optional[str] = None
     unidad_responsable_id: Optional[str] = None
     domicilio: Optional[str] = None
-    telefono: Optional[str] = None
+    telefono: Optional[str] = None """
 
 # Esquema para Unidad Responsable
 # Es una unidad responsable en el sistema, como un departamento u oficina.
