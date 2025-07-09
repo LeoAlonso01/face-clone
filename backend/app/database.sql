@@ -584,6 +584,8 @@ FROM
 ORDER BY 
     nivel, nombre;
 
+    
+
 -- Cambia 'Nombre de la Unidad' por la unidad que deseas investigar
 WITH RECURSIVE dependencias_unidad AS (
     SELECT 

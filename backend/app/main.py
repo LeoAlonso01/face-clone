@@ -73,11 +73,11 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-@app.get("/")
+@app.get("/", tags=["Root"])
 def read_root():
-    return {"message": "Bienvenido a Facebook Clone!"}
+    return {"message": "SERUMICH 2.0 API is running"}
 
-@app.get("/usuarios_contraloria")
+@app.get("/usuarios_contraloria", tags=["Usuario"])
 def contraloria_users():
     users = []
     db_url = "postgresql://contraloria:c0ntr4l0r14@host.docker.internal:5432/contraloria"
@@ -94,7 +94,7 @@ def contraloria_users():
         )
     return users
     
-@app.post("/register", status_code=status.HTTP_201_CREATED)
+@app.post("/register", status_code=status.HTTP_201_CREATED, tags=["Usuario"])
 def register(user: UserCreate):
     with session_scope() as db:
         # ✅ Aquí el error: estaba comparando con el objeto completo
@@ -123,7 +123,7 @@ def register(user: UserCreate):
         db.flush()
         return {"message": "Usuario registrado exitosamente"}
 
-@app.post("/token")
+@app.post("/token", tags=["Usuario"])
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     with session_scope() as db:
         # Verificar si el usuario existe y la contraseña es correcta
@@ -170,7 +170,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
             "role": user.role
         }
 
-@app.get("/users", response_model=list[UserResponse])
+@app.get("/users", response_model=list[UserResponse], tags=["Usuario"])
 def get_users(skip: int = 0, 
         limit: int = 10, 
         current_user: User = Depends(get_current_user)):
@@ -178,7 +178,7 @@ def get_users(skip: int = 0,
         users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
         return jsonable_encoder(users)
 
-@app.get("/users/{user_id}")
+@app.get("/users/{user_id}", tags=["Usuario"])
 def read_user(user_id: int, current_user: User = Depends(get_current_user)):
     with session_scope() as db:
         user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
@@ -186,7 +186,7 @@ def read_user(user_id: int, current_user: User = Depends(get_current_user)):
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
         return jsonable_encoder(user)
 
-@app.delete("/users/{user_id}")
+@app.delete("/users/{user_id}", tags=["Usuario"])
 def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user)):
     with session_scope() as db:
         user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
@@ -198,7 +198,7 @@ def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user))
         setattr(user, "is_deleted", True)
         return {"message": "Usuario marcado como eliminado"}
 
-@app.put("/users/{user_id}/change-password")
+@app.put("/users/{user_id}/change-password", tags=["Usuario"])
 def change_password(
     user_id: int,
     current_password: str = Body(...),
@@ -228,12 +228,16 @@ def change_password(
         setattr(user, "password", get_password_hash(new_password))
         return {"message": "Contraseña actualizada exitosamente"}
 
-@app.get("/me")
+@app.get("/me", tags=["Usuario"])
 def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user.to_dict()
 
 # endpoint para arbol jerarquico de unidades responsables
-@app.get("/unidades_jerarquicas", response_model=List[UnidadJerarquicaResponse], tags=["Jerarquía de Unidades Responsables"])
+@app.get(
+    "/unidades_jerarquicas",
+    response_model=List[UnidadJerarquicaResponse],
+    tags=["Jerarquía de Unidades Responsables", "Unidades Responsables"]
+)
 def unidades_jerarquicas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
 
     # Asegúrate de comparar el valor real, no el objeto columna
@@ -287,7 +291,11 @@ def unidades_jerarquicas(db: Session = Depends(get_db), current_user: User = Dep
 
     return unidades
 
-@app.get("/unidades_responsables", response_model=List[UnidadResponsableResponse])
+@app.get(
+    "/unidades_responsables",
+    response_model=List[UnidadResponsableResponse],
+    tags=["Unidades Responsables"]
+)
 def read_unidades(
     skip: int = 0,
     limit: int = 20,
@@ -325,9 +333,12 @@ def read_unidades(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener unidades responsables: {str(e)}"
         )
-    
-    
-@app.get("/{unidad_id}", response_model=UnidadResponsableResponse)
+        
+@app.get(
+    "/{unidad_id}",
+    response_model=UnidadResponsableResponse,
+    tags=["Unidades Responsables"]
+)
 def get_unidad(
     unidad_id: int,
     db: Session = Depends(get_db)
@@ -337,7 +348,10 @@ def get_unidad(
         raise HTTPException(status_code=404, detail="Unidad no encontrada")
     return db_unidad
 
-@app.put("/{unidad_id}/asignar-responsable")
+@app.put(
+    "/{unidad_id}/asignar-responsable",
+    tags=["Unidades Responsables"]
+)
 def asignar_responsable(
     unidad_id: int,
     usuario_id: int,
@@ -360,11 +374,11 @@ def asignar_responsable(
     
     return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
 
-@app.get("/acta_entrega_recepcion")
-def acta_entrega_recepcion():
-    return {"message": "Acta de Entrega Recepción"}
+# endpoint para las actas_entrega_recepcion
+@app.get("/actas_entrega_recepcion", tags=["Actas de Entrega Recepción"])
+def actas_entrega_recepcion():
+    return {"message": "Actas de Entrega Recepción"}
 
-@app.get("/anexos")
+@app.get("/anexos", tags=["Anexos de Entrega Recepción"])
 def anexos():
     return {"message": "Anexos de Entrega Recepción"}
-

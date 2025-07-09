@@ -9,7 +9,7 @@ from pydantic import BaseModel
 class UserRoles(PyEnum):
     USER = "USER"
     ADMIN = "ADMIN"
-    AUDIROR = "AUDITOR"
+    AUDITOR = "AUDITOR"
 
 class UserResponse(BaseModel):
     username: str
@@ -89,3 +89,29 @@ class UnidadResponsable(Base):
     padre = relationship("UnidadResponsable", remote_side=[id_unidad], back_populates="dependientes")
     # Relación con User
     usuario_responsable = relationship("User", back_populates="unidades_a_cargo") # Relación con User
+# clase para recibir las categorias de los anexos
+
+""" class CategoriaAnexo(Base):
+    __tablename__ = "categorias"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nopmbre_categoria = Column(String(100), nullable=False)
+
+    # relacion con la tabla claves con el campo id_categoria
+    id_categoria = Column(Integer, ForeignKey("claves.id_categoria"), nullable=True)
+
+# clase para el modelo de las claves
+class Clave(Base):
+    __tablename__ = "claves"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clave = Column(String(100), nullable=False)
+    descripcion = Column(String(255), nullable=False)
+    creado_en = Column(DateTime, default=datetime.datetime.now)
+    editado_en = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    is_deleted = Column(Boolean, default=False)  # Soft delete
+    id_categoria = Column(Integer, ForeignKey("categorias.id"), nullable=True)
+
+    # Relación con CategoriaAnexo
+    categoria = relationship("CategoriaAnexo", back_populates="claves")
+ """
