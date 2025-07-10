@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+
+# ignorar toda la carpeta de frontend
+/frontend/
