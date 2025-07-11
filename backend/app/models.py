@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from .database import Base
 import datetime
+from typing import Optional
 from sqlalchemy import Boolean
 from enum import Enum as PyEnum
 from pydantic import BaseModel
@@ -90,6 +91,33 @@ class UnidadResponsable(Base):
     # Relación con User
     usuario_responsable = relationship("User", back_populates="unidades_a_cargo") # Relación con User
 # clase para recibir las categorias de los anexos
+
+# Modelo para Unidad responsables 
+class UnidadResponsableBase(BaseModel):
+    nombre: str
+    telefono: Optional[str] = None
+    domicilio: Optional[str] = None
+    municipio: Optional[str] = None
+    localidad: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    rfc: Optional[str] = None
+    responsable: Optional[int] = None
+    tipo_unidad: Optional[str] = None
+    unidad_padre_id: Optional[int] = None
+
+class uUnidadResponsableCreate(BaseModel):
+    pass
+
+class UnidadResponsableUpdate(BaseModel):
+    pass 
+
+class unidadresposnableResponse(BaseModel):
+    id_unidad: int
+    fecha_creacion: datetime.datetime
+    fecha_cambio: Optional[datetime.datetime] = None
+
+    class Config:
+        from_attributes = True
 
 """ class CategoriaAnexo(Base):
     __tablename__ = "categorias"
