@@ -13,6 +13,7 @@ class UserRoles(PyEnum):
     AUDITOR = "AUDITOR"
 
 class UserResponse(BaseModel):
+    id: int
     username: str
     email: str
     role: UserRoles | None
