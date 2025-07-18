@@ -687,3 +687,67 @@ WHERE
 UPDATE unidades_responsables
 SET responsable = [ID_USUARIO]
 WHERE id_unidad = [ID_UNIDAD];
+
+---- Insert de las secretarias administrativas y academicas de cada facultad
+
+DO $$
+DECLARE
+    unidad_record RECORD;
+    id_dependencias_academicas INT;
+BEGIN
+    -- Obtener el ID de 'Dependencias Académicas' una sola vez
+    SELECT id_unidad INTO id_dependencias_academicas
+    FROM unidades_responsables
+    WHERE nombre = 'Dependencias Académicas';
+
+    -- Iterar sobre Colegios (que están como Escuelas), Escuelas, Facultades, Institutos y Unidades Profesionales
+    FOR unidad_record IN
+        SELECT
+            id_unidad,
+            nombre,
+            municipio,
+            tipo_unidad
+        FROM unidades_responsables
+        WHERE unidad_padre_id = id_dependencias_academicas
+          AND (
+                tipo_unidad = 'Escuela' OR              -- Esto incluirá tu Colegio categorizado como Escuela
+                tipo_unidad = 'Facultad' OR
+                tipo_unidad = 'Instituto' OR
+                tipo_unidad = 'Unidad Profesional'
+              )
+    LOOP
+        -- Insertar Secretaría Académica
+        INSERT INTO unidades_responsables (
+            nombre,
+            municipio,
+            tipo_unidad,
+            unidad_padre_id,
+            fecha_creacion,
+            fecha_cambio
+        ) VALUES (
+            'Secretaría Académica de ' || unidad_record.nombre,
+            unidad_record.municipio,
+            'Secretaría Académica',
+            unidad_record.id_unidad,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        );
+
+        -- Insertar Secretaría Administrativa
+        INSERT INTO unidades_responsables (
+            nombre,
+            municipio,
+            tipo_unidad,
+            unidad_padre_id,
+            fecha_creacion,
+            fecha_cambio
+        ) VALUES (
+            'Secretaría Administrativa de ' || unidad_record.nombre,
+            unidad_record.municipio,
+            'Secretaría Administrativa',
+            unidad_record.id_unidad,
+            CURRENT_TIMESTAMP,
+            CURRENT_TIMESTAMP
+        );
+    END LOOP;
+END $$;
