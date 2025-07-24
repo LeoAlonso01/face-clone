@@ -442,6 +442,383 @@ INSERT INTO unidades_responsables (
     ('Departamento de Infraestructura Deportiva Universitaria', 'Morelia', 3, (SELECT id FROM direccion_deporte), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);-- 6. Consulta para verificar la estructura jerárquica completa
 
 
+
+--------------------------------------- Inserts con id_unidad----------------------------------------------
+-- Primero, limpiamos la tabla si ya existe data (opcional)
+TRUNCATE TABLE unidades_responsables RESTART IDENTITY CASCADE;
+
+-- Insertamos la Rectoría (nivel raíz)
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES (
+    'Rectoría', 
+    'Morelia', 
+    'Rectoría', 
+    CURRENT_TIMESTAMP, 
+    CURRENT_TIMESTAMP
+);
+
+-- Insertamos Órganos de Asesoría
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES 
+    ('Consejo de la Investigación', 'Morelia', 'Órgano de Asesoría', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Insertamos Órganos Desconcentrados
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES 
+    ('Unidad de Mediación', 'Morelia', 'Unidad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Unidad de Atención Integral de la Violencia de Género', 'Morelia', 'Unidad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Coordinación General para la Igualdad de Género, Inclusión y Cultura de Paz', 'Morelia', 'Coordinación', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Secretaría Particular', 'Morelia', 'Secretaría', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Secretaría Auxiliar', 'Morelia', 'Secretaría', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Coordinación de Planeación, Infraestructura y Fortalecimiento Universitario', 'Morelia', 'Coordinación', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Dirección de Tecnologías de Información y Comunicación', 'Morelia', 'Dirección', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Órgano Interno de Control', 'Morelia', 'Órgano de Control', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Tesorería', 'Morelia', 'Tesorería', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Dirección de Vinculación y Servicio Social', 'Morelia', 'Dirección', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Dirección de Transformación Digital', 'Morelia', 'Dirección', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Secretaría Administrativa', 'Morelia', 'Secretaría', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Secretaría de Difusión Cultural y Extensión Universitaria', 'Morelia', 'Secretaría', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Insertamos departamentos que dependen de órganos desconcentrados
+-- Departamento de Protocolo (depende de Secretaría Particular)
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES (
+    'Departamento de Protocolo', 
+    'Morelia', 
+    'Departamento', 
+    (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Secretaría Particular'), 
+    CURRENT_TIMESTAMP, 
+    CURRENT_TIMESTAMP
+);
+
+-- Departamento de Auditorios, Teatros e Infraestructura Cultural (depende de Secretaría Particular)
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES (
+    'Departamento de Auditorios, Teatros e Infraestructura Cultural', 
+    'Morelia', 
+    'Departamento', 
+    (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Secretaría Particular'), 
+    CURRENT_TIMESTAMP, 
+    CURRENT_TIMESTAMP
+);
+
+-- Insertamos Dependencias Académicas
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES (
+    'Dependencias Académicas', 
+    'Morelia', 
+    'Dependencia', 
+    (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Rectoría'), 
+    CURRENT_TIMESTAMP, 
+    CURRENT_TIMESTAMP
+);
+
+-- Insertamos Escuelas
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES 
+    ('Colegio Primitivo y Nacional de San Nicolás de Hidalgo', 'Morelia', 'Escuela', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Escuela Preparatoria "Ing. Pascual Ortiz Rubio"', 'Morelia', 'Escuela', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Escuela Preparatoria "José María Morelos y Pavón"', 'Morelia', 'Escuela', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Escuela Preparatoria "Isaac Arriaga"', 'Morelia', 'Escuela', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Escuela Preparatoria "Melchor Ocampo"', 'Morelia', 'Escuela', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Escuela Preparatoria "Gral. Lázaro Cárdenas"', 'Morelia', 'Escuela', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Escuela Preparatoria "Lic. Eduardo Ruiz"', 'Morelia', 'Escuela', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Insertamos Facultades
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES 
+    ('Facultad de Derecho y Ciencias Sociales', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ingeniería Civil', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ingeniería Química', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ingeniería Eléctrica', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ingeniería Mecánica', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ingeniería en Tecnología de la Madera', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Arquitectura', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ciencias Médicas y Biológicas "Dr. Ignacio Chávez"', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Odontología', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Químico Farmacobiología', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Enfermería', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Salud Pública y Enfermería', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Contaduría y Ciencias Administrativas', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Economía "Vasco de Quiroga"', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Medicina Veterinaria y Zootecnia', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Agrobiología "Presidente Juárez"', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ciencias Agropecuarias', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Ciencias Físico Matemáticas "Mat. Luis Manuel Rivera Gutiérrez"', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Biología', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Filosofía "Dr. Samuel Ramos Magaña"', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Historia', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Psicología', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad de Letras', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Facultad Popular de Bellas Artes', 'Morelia', 'Facultad', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Insertamos Institutos
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES 
+    ('Instituto de Investigación en Metalurgia y Materiales', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Investigaciones Químico Biológicas', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Investigaciones Históricas', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Física y Matemáticas', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Investigaciones sobre los Recursos Naturales', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Investigaciones Agropecuarias y Forestales', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Investigaciones Económicas y Empresariales', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Investigaciones Filosóficas "Luis Villoro Toranzo"', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Instituto de Investigaciones en Ciencias de la Tierra "Dr. Víctor Hugo Garduño Monroy"', 'Morelia', 'Instituto', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Insertamos Unidades Profesionales (con sus municipios reales)
+INSERT INTO unidades_responsables (
+    nombre, 
+    municipio, 
+    tipo_unidad, 
+    unidad_padre_id, 
+    fecha_creacion, 
+    fecha_cambio
+) VALUES 
+    ('Unidad Profesional de la Ciudad de Lázaro Cárdenas', 'Lázaro Cárdenas', 'Unidad Profesional', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Unidad Profesional de Ciudad Hidalgo', 'Ciudad Hidalgo', 'Unidad Profesional', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Unidad Profesional del Balsas', 'Morelia', 'Unidad Profesional', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Unidad Profesional de Uruapan', 'Uruapan', 'Unidad Profesional', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    
+    ('Unidad Profesional de Zamora', 'Zamora', 'Unidad Profesional', 
+     (SELECT id_unidad FROM unidades_responsables WHERE nombre = 'Dependencias Académicas'), 
+     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Consulta para verificar la estructura jerárquica
+SELECT 
+    u.id_unidad,
+    u.nombre,
+    u.tipo_unidad,
+    u.municipio,
+    p.nombre AS unidad_padre
+FROM 
+    unidades_responsables u
+LEFT JOIN 
+    unidades_responsables p ON u.unidad_padre_id = p.id_unidad
+ORDER BY 
+    COALESCE(u.unidad_padre_id, 0), u.id_unidad;
+
+-----------------------------------------------------------------------------------
 SELECT 
     u.id_unidad,
     LPAD(' ', (LEVEL-1)*4, ' ') || u.nombre AS nombre_jerarquico,

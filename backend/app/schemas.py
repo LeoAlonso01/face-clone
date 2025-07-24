@@ -53,6 +53,7 @@ class UserUpdate(BaseModel):
 # Esquema para Unidad Responsable
 # Es una unidad responsable en el sistema, como un departamento u oficina.
 class UnidadResponsableBase(BaseModel):
+    id_unidad: Optional[int] = None
     nombre: str
     telefono: Optional[str] = None
     domicilio: Optional[str] = None

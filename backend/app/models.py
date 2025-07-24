@@ -95,6 +95,7 @@ class UnidadResponsable(Base):
 
 # Modelo para Unidad responsables 
 class UnidadResponsableBase(BaseModel):
+    id_unidad: Optional[int] = None
     nombre: str
     telefono: Optional[str] = None
     domicilio: Optional[str] = None
