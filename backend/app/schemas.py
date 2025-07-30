@@ -1,8 +1,10 @@
 # schemas.py
 from pydantic import BaseModel
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, date, time
+from sqlalchemy import Enum
 from enum import Enum
+
 
 class UserRoles(str, Enum):
     USER = "USER"
@@ -102,6 +104,59 @@ class UnidadJerarquicaResponse(BaseModel):
     tipo_unidad: Optional[str]
     nivel: int
     responsable: Optional[ResponsableResumen]
+
+    class Config:
+        orm_mode = True
+
+class ActaEntregaRecepcionBase(BaseModel):
+    # campos con valores por defecto
+    id: Optional[int] = None
+    creado_en: Optional[str] = None
+    actualizado_en: Optional[str] = None
+
+
+    unidad_responsable: Optional[int] = None
+    folio: Optional[str] = None
+    fecha: Optional[str] = None
+    hora: Optional[str] = None
+    comisionado: Optional[str] = None
+    oficio_comision: Optional[str] = None
+    fecha_oficio_comision: Optional[str] = None
+    entrante: Optional[str] = None
+    ine_entrante: Optional[str] = None
+    fecha_inicio_labores: Optional[str] = None
+    nombramiento: Optional[str] = None
+    fecha_nombramiento: Optional[str] = None
+    asignacion: Optional[str] = None
+    asignado_por: Optional[str] = None
+    domicilio_entrante: Optional[str] = None
+    telefono_entrante: Optional[str] = None
+    saliente: Optional[str] = None
+    fecha_fin_labores: Optional[str] = None
+    testigo_entrante: Optional[str] = None
+    ine_testigo_entrante: Optional[str] = None
+    testigo_saliente: Optional[str] = None
+    ine_testigo_saliente: Optional[str] = None
+    fecha_cierre_acta: Optional[str] = None
+    hora_cierre_acta: Optional[str] = None
+    observaciones: Optional[str] = None
+    estado: Optional[str] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None,
+            date: lambda v: v.isoformat() if v else None,
+            time: lambda v: v.isoformat() if v else None
+        }
+   
+
+class ActaEntregaRecepcionCreate(ActaEntregaRecepcionBase):
+    pass
+
+class ActaEntregaRecepcion(ActaEntregaRecepcionBase):
+    id: int
+    creado_en: datetime
+    actualizado_en: datetime
 
     class Config:
         orm_mode = True

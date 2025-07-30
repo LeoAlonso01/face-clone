@@ -1,11 +1,13 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from .database import Base
-import datetime
+from datetime import datetime, date, time
+from sqlalchemy import ForeignKey
 from typing import Optional
 from sqlalchemy import Boolean
 from enum import Enum as PyEnum
 from pydantic import BaseModel
+from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
 
 class UserRoles(PyEnum):
     USER = "USER"
@@ -48,8 +50,8 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     password = Column(String)
-    created_at = Column(DateTime, default=datetime.datetime.now)
-    updated_at = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    created_at = Column(DateTime, default=DateTime)
+    updated_at = Column(DateTime, default=DateTime, onupdate=DateTime)
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     posts = relationship("Post", back_populates="owner")
@@ -81,8 +83,8 @@ class UnidadResponsable(Base):
     correo_electronico = Column(String(100))
     responsable = Column(Integer, ForeignKey('users.id'), nullable=True)  # Modificado
     tipo_unidad = Column(String(50))
-    fecha_creacion = Column(DateTime, default=datetime.datetime.now)
-    fecha_cambio = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+    fecha_creacion = Column(DateTime, default=DateTime)
+    fecha_cambio = Column(DateTime, default=DateTime, onupdate=DateTime)
     # columna de jerarquía para relacionar unidades responsables
     unidad_padre_id = Column(Integer, ForeignKey("unidades_responsables.id_unidad"), nullable=True)
     # Relacion
@@ -93,55 +95,52 @@ class UnidadResponsable(Base):
     usuario_responsable = relationship("User", back_populates="unidades_a_cargo") # Relación con User
 # clase para recibir las categorias de los anexos
 
-# Modelo para Unidad responsables 
-class UnidadResponsableBase(BaseModel):
+""" class UnidadResponsableBase(BaseModel):
     id_unidad: Optional[int] = None
     nombre: str
     telefono: Optional[str] = None
     domicilio: Optional[str] = None
+    fecha_creacion: Optional[datetime.datetime] = None
     municipio: Optional[str] = None
-    localidad: Optional[str] = None
-    codigo_postal: Optional[str] = None
-    rfc: Optional[str] = None
-    responsable: Optional[int] = None
-    tipo_unidad: Optional[str] = None
-    unidad_padre_id: Optional[int] = None
-
-class uUnidadResponsableCreate(BaseModel):
-    pass
-
-class UnidadResponsableUpdate(BaseModel):
-    pass 
-
-class unidadresposnableResponse(BaseModel):
-    id_unidad: int
-    fecha_creacion: datetime.datetime
     fecha_cambio: Optional[datetime.datetime] = None
 
     class Config:
         from_attributes = True
+"""
 
-""" class CategoriaAnexo(Base):
-    __tablename__ = "categorias"
-
-    id = Column(Integer, primary_key=True, index=True)
-    nopmbre_categoria = Column(String(100), nullable=False)
-
-    # relacion con la tabla claves con el campo id_categoria
-    id_categoria = Column(Integer, ForeignKey("claves.id_categoria"), nullable=True)
-
-# clase para el modelo de las claves
-class Clave(Base):
-    __tablename__ = "claves"
+# esquema para el acta entrega-recepción
+class ActaEntregaRecepcion(Base):
+    __tablename__ = "acta_entrega_recepcion"
 
     id = Column(Integer, primary_key=True, index=True)
-    clave = Column(String(100), nullable=False)
-    descripcion = Column(String(255), nullable=False)
-    creado_en = Column(DateTime, default=datetime.datetime.now)
-    editado_en = Column(DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
-    is_deleted = Column(Boolean, default=False)  # Soft delete
-    id_categoria = Column(Integer, ForeignKey("categorias.id"), nullable=True)
+    unidad_responsable = Column(Integer, ForeignKey("unidades_responsables.id_unidad"), nullable=False)
+    folio = Column(String)
+    fecha = Column(String)
+    hora = Column(String)
+    comisionado = Column(String)
+    oficio_comision = Column(String, nullable=True)
+    fecha_oficio_comision = Column(String, nullable=True)
+    entrante = Column(String)
+    ine_entrante = Column(String, nullable=True)
+    fecha_inicio_labores = Column(String, nullable=True)
+    nombramiento = Column(String, nullable=True)
+    fecha_nombramiento = Column(String, nullable=True)
+    asignacion = Column(String, nullable=True)
+    asignado_por = Column(String, nullable=True)
+    domicilio_entrante = Column(String, nullable=True)
+    telefono_entrante = Column(String, nullable=True)
+    saliente = Column(String, nullable=True)
+    fecha_fin_labores = Column(String, nullable=True)
+    testigo_entrante = Column(String, nullable=True)
+    ine_testigo_entrante = Column(String, nullable=True)
+    testigo_saliente = Column(String, nullable=True)
+    ine_testigo_saliente = Column(String, nullable=True)
+    fecha_cierre_acta = Column(String, nullable=True)
+    hora_cierre_acta = Column(String, nullable=True)
+    observaciones = Column(Text, nullable=True)
+    estado = Column(String, nullable=True)
+    creado_en = Column(Date)
+    actualizado_en = Column(Date)
 
-    # Relación con CategoriaAnexo
-    categoria = relationship("CategoriaAnexo", back_populates="claves")
- """
+
+

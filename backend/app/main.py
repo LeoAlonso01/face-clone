@@ -1,11 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Body 
+from fastapi import FastAPI, HTTPException, Depends, status, Body, Query 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .database import Base, engine
 from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import timedelta, datetime
 from enum import Enum
 from .auth import (
     authenticate_user,
@@ -18,6 +18,8 @@ from .auth import (
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import User, UserRoles, UserCreate, UserResponse, UnidadResponsable
+from .models import ActaEntregaRecepcion as ActaModel
+from .schemas import ActaEntregaRecepcion as ActaSchema
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session
@@ -575,10 +577,84 @@ def asignar_responsable(
     
     return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
 
-# endpoint para las actas_entrega_recepcion
-@app.get("/actas_entrega_recepcion", tags=["Actas de Entrega Recepción"])
-def actas_entrega_recepcion():
-    return {"message": "Actas de Entrega Recepción"}
+@app.post("/actas/", response_model=ActaSchema, tags=["Actas de Entrega Recepción"])
+def create_acta(
+    acta: ActaSchema,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    def parse_datetime(value):
+        try:
+            return datetime.fromisoformat(value)
+        except:
+            return None
+
+    db_acta = ActaModel(
+        **acta.dict(exclude={"creado_en", "actualizado_en"}),
+        creado_en=datetime.utcnow(),
+        actualizado_en=datetime.utcnow()
+    )
+
+    db.add(db_acta)
+    db.commit()
+    db.refresh(db_acta)
+    return db_acta
+
+
+@app.get("/actas/", tags=["Actas de Entrega Recepción"], response_model=List[ActaSchema])
+def read_actas(
+    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
+    limit: int = Query(1000, le=1000, description="Número máximo de registros a devolver"),
+    db: Session = Depends(get_db),
+):
+    """
+    Obtiene una lista paginada de actas de entrega-recepción.
+    
+    Parámetros:
+    - skip: Registros a saltar (default 0)
+    - limit: Límite de registros (max 1000)
+    """
+    try:
+        actas = db.query(ActaModel)\
+                 .order_by(ActaModel.fecha.desc())\
+                 .offset(skip)\
+                 .limit(limit)\
+                 .all()
+        return actas
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+@app.get("/actas/{acta_id}", response_model=ActaSchema, tags=["Actas de Entrega Recepción"])
+def read_acta(acta_id: int, db: Session = Depends(get_db)):
+    db_acta = db.query(ActaModel).filter(ActaModel.id == acta_id).first()
+    if not db_acta:
+        raise HTTPException(status_code=404, detail="Acta no encontrada")
+    return db_acta
+
+@app.put("/actas/{acta_id}", response_model=ActaSchema , tags=["Actas de Entrega Recepción"])
+def update_acta(acta_id: int, acta: ActaSchema, db: Session = Depends(get_db)):
+    db_acta = db.query(ActaModel).filter(ActaModel.id == acta_id).first()
+    if db_acta is None:
+        raise HTTPException(status_code=404, detail="Acta no encontrada")
+    for key, value in acta.dict().items():
+        setattr(db_acta, key, value)
+    db.commit()
+    db.refresh(db_acta)
+    return db_acta
+
+# borrado logico de actas
+@app.delete("/actas/{acta_id}", status_code=204, tags=["Actas de Entrega Recepción"])
+def delete_acta(acta_id: int, db: Session = Depends(get_db)):
+    db_acta = db.query(ActaModel).filter(ActaModel.id == acta_id).first()
+    if db_acta is None:
+        raise HTTPException(status_code=404, detail="Acta no encontrada")
+    
+    # Borrado lógico
+    db.delete(db_acta)
+    db.commit()
+    return {"message": "Acta eliminada correctamente"}
+
 
 @app.get("/anexos", tags=["Anexos de Entrega Recepción"])
 def anexos():
