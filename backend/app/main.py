@@ -17,9 +17,10 @@ from .auth import (
     
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-from .models import User, UserRoles, UserCreate, UserResponse, UnidadResponsable
+from .models import Anexos, User, UserRoles, UserCreate, UserResponse, UnidadResponsable
 from .models import ActaEntregaRecepcion as ActaModel
 from .schemas import ActaEntregaRecepcion as ActaSchema
+from .schemas import AnexoBase, AnexoCreate, AnexoResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session
@@ -600,7 +601,6 @@ def create_acta(
     db.refresh(db_acta)
     return db_acta
 
-
 @app.get("/actas/", tags=["Actas de Entrega Recepción"], response_model=List[ActaSchema])
 def read_actas(
     skip: int = Query(0, ge=0, description="Número de registros a saltar"),
@@ -624,7 +624,6 @@ def read_actas(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-
 @app.get("/actas/{acta_id}", response_model=ActaSchema, tags=["Actas de Entrega Recepción"])
 def read_acta(acta_id: int, db: Session = Depends(get_db)):
     db_acta = db.query(ActaModel).filter(ActaModel.id == acta_id).first()
@@ -656,6 +655,16 @@ def delete_acta(acta_id: int, db: Session = Depends(get_db)):
     return {"message": "Acta eliminada correctamente"}
 
 
-@app.get("/anexos", tags=["Anexos de Entrega Recepción"])
-def anexos():
-    return {"message": "Anexos de Entrega Recepción"}
+@app.get("/anexos/", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
+def read_anexos(
+    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
+    limit: int = Query(1000, le=1000, description="Número máximo de registros a devolver"),
+    db: Session = Depends(get_db)
+):
+    try:
+        anexos = db.query(Anexos).filter(Anexos.is_deleted == False).limit(limit).all()
+        if not anexos:
+            return []
+        return anexos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")

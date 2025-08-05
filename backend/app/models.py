@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
+from sqlalchemy import JSON, Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship
 from .database import Base
 from datetime import datetime, date, time
@@ -8,6 +8,9 @@ from sqlalchemy import Boolean
 from enum import Enum as PyEnum
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
+
+def utcnow():
+    return datetime.now() 
 
 class UserRoles(PyEnum):
     USER = "USER"
@@ -141,6 +144,20 @@ class ActaEntregaRecepcion(Base):
     estado = Column(String, nullable=True)
     creado_en = Column(Date)
     actualizado_en = Column(Date)
+
+class Anexos(Base):
+    __tablename__ = "anexos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clave_id = Column(Integer)
+    creador_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    fecha_creacion = Column(DateTime, default=utcnow)
+    datos = Column(JSON, nullable=False)
+    estado = Column(String, nullable=False)
+    unidad_responsable_id = Column(Integer, ForeignKey("unidades_responsables.id_unidad"), nullable=False)
+    creado_en = Column(Date, default=date.today)
+    actualizado_en = Column(Date, default=date.today, onupdate=date.today)
+    is_deleted = Column(Boolean, default=False)  # Soft delete
 
 
 

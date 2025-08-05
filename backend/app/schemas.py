@@ -160,3 +160,56 @@ class ActaEntregaRecepcion(ActaEntregaRecepcionBase):
 
     class Config:
         orm_mode = True
+
+# Esquema para Anexo
+class AnexoBase(BaseModel):
+    id: int
+    clave_id: int | None
+    creador_id: int | None
+    fecha_creacion: datetime | None
+    datos: str | None
+    estado: str | None
+    unidad_responsable_id: int | None
+    creado_en: datetime
+    actualizado_en: datetime
+    is_deleted: bool = False  # Soft delete
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None,
+            date: lambda v: v.isoformat() if v else None
+        }
+
+class AnexoCreate(AnexoBase):
+    pass
+class AnexoResponse(AnexoBase):
+
+    id: int
+    fecha_creacion: datetime
+    creado_en: date
+    actualizado_en: date
+    unidad_responsable_id: int
+    estado: str
+
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None,
+            date: lambda v: v.isoformat() if v else None
+        }
+
+class AnexoUpdate(AnexoBase):
+    clave_id: Optional[int] = None
+    creador_id: Optional[int] = None
+    datos: Optional[dict] = None
+    estado: Optional[str] = None
+    unidad_responsable_id: Optional[int] = None
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None,
+            date: lambda v: v.isoformat() if v else None
+        }
+        orm_mode = True
+        
