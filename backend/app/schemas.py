@@ -1,5 +1,5 @@
 # schemas.py
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime, date, time
 from sqlalchemy import Enum
@@ -17,16 +17,27 @@ class UserBase(BaseModel):
     email: str
     # role optional sin valor por defecto
     role: Optional[UserRoles] = None
-    """ unidad_responsable_id: Optional[str] = None
-    domicilio: Optional[str] = None
-    telefono: Optional[str] = None """
+    
+    model_config = ConfigDict(from_attributes=True)
 
 # Esquema para creación de usuario (incluye password)
 class UserCreate(UserBase):
-    username: str
-    email: str
     password: str
-    role: Optional[UserRoles] = None  # Ahora es opcional sin valor por defecto
+
+class UserDB(UserBase):
+    id: int
+    is_deleted: bool = False
+    hashed_password: str
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "username": self.username,
+            "email": self.email,
+            "role": self.role,
+            "is_deleted": self.is_deleted
+        }
+
 
 # Esquema para respuesta (sin password)
 class UserResponse(UserBase):
@@ -47,10 +58,7 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     password: Optional[str] = None
     role: Optional[UserRoles] = None
-    """ nombre: Optional[str] = None
-    unidad_responsable_id: Optional[str] = None
-    domicilio: Optional[str] = None
-    telefono: Optional[str] = None """
+    
 
 # Esquema para Unidad Responsable
 # Es una unidad responsable en el sistema, como un departamento u oficina.
@@ -58,6 +66,7 @@ class UnidadResponsableBase(BaseModel):
     id_unidad: Optional[int] = None
     nombre: str
     telefono: Optional[str] = None
+    
     domicilio: Optional[str] = None
     municipio: Optional[str] = None
     localidad: Optional[str] = None
@@ -113,8 +122,6 @@ class ActaEntregaRecepcionBase(BaseModel):
     id: Optional[int] = None
     creado_en: Optional[str] = None
     actualizado_en: Optional[str] = None
-
-
     unidad_responsable: Optional[int] = None
     folio: Optional[str] = None
     fecha: Optional[str] = None
@@ -167,7 +174,7 @@ class AnexoBase(BaseModel):
     clave_id: int | None
     creador_id: int | None
     fecha_creacion: datetime | None
-    datos: str | None
+    datos: dict | None
     estado: str | None
     unidad_responsable_id: int | None
     creado_en: datetime
@@ -178,11 +185,17 @@ class AnexoBase(BaseModel):
         from_attributes = True
         json_encoders = {
             datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None
+            date: lambda v: v.isoformat() if v else None,
+            dict: lambda v: v if isinstance(v, dict) else None
         }
 
 class AnexoCreate(AnexoBase):
-    pass
+    clave:str
+    creador_id: int
+    datos: dict | None = None
+    estado: str | None = None
+    unidad_responsable_id: int | None = None
+    
 class AnexoResponse(AnexoBase):
 
     id: int
@@ -196,7 +209,8 @@ class AnexoResponse(AnexoBase):
         orm_mode = True
         json_encoders = {
             datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None
+            date: lambda v: v.isoformat() if v else None,
+            dict: lambda v: v if isinstance(v, dict) else None
         }
 
 class AnexoUpdate(AnexoBase):
