@@ -1,5 +1,5 @@
 # schemas.py
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional, List
 from datetime import datetime, date, time
 from sqlalchemy import Enum
@@ -13,12 +13,9 @@ class UserRoles(str, Enum):
 
 # Esquema base para usuario
 class UserBase(BaseModel):
+    id: int
     username: str
-    email: str
-    # role optional sin valor por defecto
-    role: Optional[UserRoles] = None
     
-    model_config = ConfigDict(from_attributes=True)
 
 # Esquema para creación de usuario (incluye password)
 class UserCreate(UserBase):
@@ -44,7 +41,7 @@ class UserResponse(UserBase):
     id: int
     username: str
     email: str
-    role: Optional[UserRoles] = None  # Ahora es opcional sin valor por defecto
+    role: Optional[str] = None  # Ahora es opcional sin valor por defecto
     created_at: datetime
     updated_at: datetime
     is_deleted: bool
@@ -73,10 +70,14 @@ class UnidadResponsableBase(BaseModel):
     codigo_postal: Optional[str] = None
     rfc: Optional[str] = None
     correo_electronico: Optional[str] = None
-    responsable: Optional[int] = None  # Ahora es ID de usuario
+    responsable: Optional[UserBase] = None
     tipo_unidad: Optional[str] = None
     unidad_padre_id: Optional[int] = None  # ID de la unidad responsable padre
 
+    @field_validator('responsable', mode='before')
+    def tranform_responsable(cls, v):
+        # si el valor es un ID numerico, se convierte a None
+        return None if isinstance(v, int) else v
     class Config:
         orm_mode = True
 
@@ -171,7 +172,7 @@ class ActaEntregaRecepcion(ActaEntregaRecepcionBase):
 # Esquema para Anexo
 class AnexoBase(BaseModel):
     id: int
-    clave_id: int | None
+    clave: int | None
     creador_id: int | None
     fecha_creacion: datetime | None
     datos: dict | None
@@ -199,7 +200,9 @@ class AnexoCreate(AnexoBase):
 class AnexoResponse(AnexoBase):
 
     id: int
+    clave: str
     fecha_creacion: datetime
+    datos: dict
     creado_en: date
     actualizado_en: date
     unidad_responsable_id: int
@@ -214,7 +217,7 @@ class AnexoResponse(AnexoBase):
         }
 
 class AnexoUpdate(AnexoBase):
-    clave_id: Optional[int] = None
+    clave: Optional[str]
     creador_id: Optional[int] = None
     datos: Optional[dict] = None
     estado: Optional[str] = None
