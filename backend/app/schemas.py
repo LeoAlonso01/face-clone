@@ -1,5 +1,5 @@
 # schemas.py
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List
 from datetime import datetime, date, time
 from sqlalchemy import Enum
@@ -36,6 +36,13 @@ class UserDB(UserBase):
         }
 
 
+class UnidadResponsableSimple(BaseModel):
+    id_unidad: int
+    nombre: str
+
+    class Config:
+        orm_mode = True
+
 # Esquema para respuesta (sin password)
 class UserResponse(UserBase):
     id: int
@@ -45,6 +52,7 @@ class UserResponse(UserBase):
     created_at: datetime
     updated_at: datetime
     is_deleted: bool
+    unidad_responsable: Optional[UnidadResponsableSimple] = None
 
     class Config:
         orm_mode = True
@@ -90,15 +98,27 @@ class UnidadResponsableUpdate(UnidadResponsableBase):
     pass
 
 # Esquema para respuesta de Unidad Responsable
-class UnidadResponsableResponse(UnidadResponsableBase):
+class UnidadResponsableResponse(BaseModel):
     id_unidad: int
     nombre: str
+    telefono: Optional[str] = None
+    domicilio: Optional[str] = None
+    municipio: Optional[str] = None
+    localidad: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    rfc: Optional[str] = None
+    correo_electronico: Optional[str] = None
+    tipo_unidad: Optional[str] = None
     fecha_creacion: Optional[datetime] = None
     fecha_cambio: Optional[datetime] = None
-    dependientes: List[UnidadResponsableBase] = [] 
+    responsable: Optional[UserBase] = None  # Asegúrate que UserBase esté bien definido
+    dependientes: List[UnidadResponsableBase] = Field(default_factory=list)  # Usa Field para listas
 
     class Config:
         orm_mode = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
 
 class ResponsableResumen(BaseModel):
     id: int

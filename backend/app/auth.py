@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from .database import get_db
 from .models import User, UserRoles
 
@@ -55,7 +55,11 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = db.query(User).filter(User.username == username).first()
+    # Carga la relación con unidad_responsable usando joinedload
+    user = db.query(User).options(
+        joinedload(User.unidades_a_cargo)
+    ).filter(User.username == username).first()
+    
     if user is None:
         raise credentials_exception
     return user

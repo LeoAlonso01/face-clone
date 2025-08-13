@@ -58,6 +58,7 @@ class User(Base):
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     posts = relationship("Post", back_populates="owner")
+    
     unidades_a_cargo = relationship(
         "UnidadResponsable", 
         back_populates="usuario_responsable", 

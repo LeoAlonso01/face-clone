@@ -22,7 +22,7 @@ from .models import Anexos, User, UserRoles, UserCreate, UserResponse, UnidadRes
 from .models import ActaEntregaRecepcion as ActaModel
 from .schemas import ActaEntregaRecepcion as ActaSchema
 from .schemas import AnexoBase, AnexoCreate, AnexoResponse
-from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate, UserBase
+from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UnidadResponsableSimple, UserCreate, UserBase
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql import text
@@ -67,18 +67,18 @@ origins = [
     "http://148.216.111.102",
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
     "http://148.216.111.102:3000",
-    ""
-    "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/"
+    "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/",
+    "https://entrega-recepcion-git-91bd1d-utm221001tim-ut-moreliaes-projects.vercel.app/"
 ]
 
 # Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",  # Localhost con cualquier puerto
+    allow_origins=["*"],  # Permite todos los orígenes TEMPORALMENTE
     allow_credentials=True,
-    allow_methods=["*"],  # O ["GET", "POST", etc] para ser más restrictivo
-    allow_headers=["*"],
-    expose_headers=["*"]  # Opcional: para exponer headers personalizados
+    allow_methods=["*"],
+    allow_headers=["*"]
 )
 
 @app.get("/", tags=["Root"])
@@ -156,6 +156,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Usuario eliminado, no puedes iniciar sesión"
             )
+        
+        # obtener la unidad responsable del usuario
+        
         
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
@@ -236,18 +239,56 @@ def change_password(
         setattr(user, "password", get_password_hash(new_password))
         return {"message": "Contraseña actualizada exitosamente"}
 
-from fastapi import Depends, HTTPException, status
+# Agrega este endpoint temporal para diagnóstico
+@app.get("/debug/unidad-estructura")
+async def debug_unidad_estructura(db: Session = Depends(get_db)):
+    unidad_ejemplo = db.query(UnidadResponsable).first()
+    if not unidad_ejemplo:
+        return {"error": "No hay unidades en la base de datos"}
+    
+    return {
+        "columnas": unidad_ejemplo.__dict__,
+        "relaciones": [rel for rel in dir(unidad_ejemplo) if not rel.startswith('_')]
+    }
 
-@app.get("/me", response_model=UserResponse, tags=["Usuario"])
-async def read_users_me(
-    current_user: User = Depends(get_current_user)
+@app.get("/me/unidad", response_model=UnidadResponsableResponse)
+async def get_my_unidad_robust(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    if current_user.is_deleted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Usuario inactivo"
-        )
-    return jsonable_encoder(current_user)
+    # Consulta directa evitando problemas de relación
+    unidad = db.query(UnidadResponsable).filter(
+        UnidadResponsable.responsable == current_user.id
+    ).first()
+    
+    if not unidad:
+        raise HTTPException(404, "No tiene unidad asignada")
+    
+    # Construye respuesta manualmente
+    response_data = {
+        "id_unidad": unidad.id_unidad,
+        "nombre": unidad.nombre,
+        "fecha_creacion": unidad.fecha_creacion,
+        "fecha_cambio": unidad.fecha_cambio,
+        "responsable": None,
+        "dependientes": []
+    }
+    
+    # Agrega responsable si existe
+    if unidad.responsable:
+        response_data["responsable"] = {
+            "id": unidad.responsable.id,
+            "username": unidad.responsable.username
+        }
+    
+    # Agrega dependientes si existen
+    if hasattr(unidad, 'dependientes'):
+        response_data["dependientes"] = [
+            {"id_unidad": dep.id_unidad, "nombre": dep.nombre}
+            for dep in unidad.dependientes
+        ]
+    
+    return UnidadResponsableResponse(**response_data)
 
 # endpoint para arbol jerarquico de unidades responsables
 @app.get(
