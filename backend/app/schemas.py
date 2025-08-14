@@ -1,5 +1,5 @@
 # schemas.py
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List
 from datetime import datetime, date, time
 from sqlalchemy import Enum
@@ -13,12 +13,9 @@ class UserRoles(str, Enum):
 
 # Esquema base para usuario
 class UserBase(BaseModel):
+    id: int
     username: str
-    email: str
-    # role optional sin valor por defecto
-    role: Optional[UserRoles] = None
     
-    model_config = ConfigDict(from_attributes=True)
 
 # Esquema para creación de usuario (incluye password)
 class UserCreate(UserBase):
@@ -39,15 +36,23 @@ class UserDB(UserBase):
         }
 
 
+class UnidadResponsableSimple(BaseModel):
+    id_unidad: int
+    nombre: str
+
+    class Config:
+        orm_mode = True
+
 # Esquema para respuesta (sin password)
 class UserResponse(UserBase):
     id: int
     username: str
     email: str
-    role: Optional[UserRoles] = None  # Ahora es opcional sin valor por defecto
+    role: Optional[str] = None  # Ahora es opcional sin valor por defecto
     created_at: datetime
     updated_at: datetime
     is_deleted: bool
+    unidad_responsable: Optional[UnidadResponsableSimple] = None
 
     class Config:
         orm_mode = True
@@ -73,10 +78,14 @@ class UnidadResponsableBase(BaseModel):
     codigo_postal: Optional[str] = None
     rfc: Optional[str] = None
     correo_electronico: Optional[str] = None
-    responsable: Optional[int] = None  # Ahora es ID de usuario
+    responsable: Optional[UserBase] = None
     tipo_unidad: Optional[str] = None
     unidad_padre_id: Optional[int] = None  # ID de la unidad responsable padre
 
+    @field_validator('responsable', mode='before')
+    def tranform_responsable(cls, v):
+        # si el valor es un ID numerico, se convierte a None
+        return None if isinstance(v, int) else v
     class Config:
         orm_mode = True
 
@@ -89,15 +98,27 @@ class UnidadResponsableUpdate(UnidadResponsableBase):
     pass
 
 # Esquema para respuesta de Unidad Responsable
-class UnidadResponsableResponse(UnidadResponsableBase):
+class UnidadResponsableResponse(BaseModel):
     id_unidad: int
     nombre: str
+    telefono: Optional[str] = None
+    domicilio: Optional[str] = None
+    municipio: Optional[str] = None
+    localidad: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    rfc: Optional[str] = None
+    correo_electronico: Optional[str] = None
+    tipo_unidad: Optional[str] = None
     fecha_creacion: Optional[datetime] = None
     fecha_cambio: Optional[datetime] = None
-    dependientes: List[UnidadResponsableBase] = [] 
+    responsable: Optional[UserBase] = None  # Asegúrate que UserBase esté bien definido
+    dependientes: List[UnidadResponsableBase] = Field(default_factory=list)  # Usa Field para listas
 
     class Config:
         orm_mode = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
 
 class ResponsableResumen(BaseModel):
     id: int
@@ -171,7 +192,7 @@ class ActaEntregaRecepcion(ActaEntregaRecepcionBase):
 # Esquema para Anexo
 class AnexoBase(BaseModel):
     id: int
-    clave_id: int | None
+    clave: int | None
     creador_id: int | None
     fecha_creacion: datetime | None
     datos: dict | None
@@ -199,7 +220,9 @@ class AnexoCreate(AnexoBase):
 class AnexoResponse(AnexoBase):
 
     id: int
+    clave: str
     fecha_creacion: datetime
+    datos: dict
     creado_en: date
     actualizado_en: date
     unidad_responsable_id: int
@@ -214,7 +237,7 @@ class AnexoResponse(AnexoBase):
         }
 
 class AnexoUpdate(AnexoBase):
-    clave_id: Optional[int] = None
+    clave: Optional[str]
     creador_id: Optional[int] = None
     datos: Optional[dict] = None
     estado: Optional[str] = None

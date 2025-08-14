@@ -58,7 +58,11 @@ class User(Base):
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     posts = relationship("Post", back_populates="owner")
-    unidades_a_cargo = relationship("UnidadResponsable", back_populates="usuario_responsable")
+    
+    unidades_a_cargo = relationship(
+        "UnidadResponsable", 
+        back_populates="usuario_responsable", 
+        foreign_keys="[UnidadResponsable.responsable]")
 
 class Post(Base):
     __tablename__ = "posts"
@@ -84,7 +88,8 @@ class UnidadResponsable(Base):
     codigo_postal = Column(String(10))
     rfc = Column(String(13))
     correo_electronico = Column(String(100))
-    responsable = Column(Integer, ForeignKey('users.id'), nullable=True)  # Modificado
+
+    responsable = Column(Integer, ForeignKey("users.id"))
     tipo_unidad = Column(String(50))
     fecha_creacion = Column(DateTime, default=DateTime)
     fecha_cambio = Column(DateTime, default=DateTime, onupdate=DateTime)
@@ -95,21 +100,14 @@ class UnidadResponsable(Base):
     # Relación con UnidadResponsable
     padre = relationship("UnidadResponsable", remote_side=[id_unidad], back_populates="dependientes")
     # Relación con User
-    usuario_responsable = relationship("User", back_populates="unidades_a_cargo") # Relación con User
-# clase para recibir las categorias de los anexos
-
-""" class UnidadResponsableBase(BaseModel):
-    id_unidad: Optional[int] = None
-    nombre: str
-    telefono: Optional[str] = None
-    domicilio: Optional[str] = None
-    fecha_creacion: Optional[datetime.datetime] = None
-    municipio: Optional[str] = None
-    fecha_cambio: Optional[datetime.datetime] = None
+    usuario_responsable = relationship(
+        "User", foreign_keys=[responsable],
+        back_populates="unidades_a_cargo",
+        lazy="joined")
 
     class Config:
-        from_attributes = True
-"""
+        orm_mode = True
+
 
 # esquema para el acta entrega-recepción
 class ActaEntregaRecepcion(Base):
@@ -149,7 +147,7 @@ class Anexos(Base):
     __tablename__ = "anexos"
 
     id = Column(Integer, primary_key=True, index=True)
-    clave_id = Column(Integer)
+    clave = Column(String)
     creador_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     fecha_creacion = Column(DateTime, default=utcnow)
     datos = Column(JSON, nullable=False)

@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
 from datetime import timedelta, datetime
 from enum import Enum
+import logging
 from .auth import (
     authenticate_user,
     create_access_token,
@@ -21,12 +22,16 @@ from .models import Anexos, User, UserRoles, UserCreate, UserResponse, UnidadRes
 from .models import ActaEntregaRecepcion as ActaModel
 from .schemas import ActaEntregaRecepcion as ActaSchema
 from .schemas import AnexoBase, AnexoCreate, AnexoResponse
-from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
+from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UnidadResponsableSimple, UserCreate, UserBase
 from .database import SessionLocal, engine, Base, get_db
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql import text
 from contextlib import contextmanager
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy.exc import SQLAlchemyError
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 USER = "USER"
 ADMIN = "ADMIN"
@@ -58,20 +63,21 @@ app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost",
-    "http://localhost:5173",
+    "http://localhost:5173",  # Asumiendo que tu front corre aquí
     "http://148.216.111.144",
-    "http://localhost:3000",
-    "http://192.168.0.124:3000",
-    "https://entrega-recepcion-frontend-89p1.vercel.app",  # dominio real en Vercel
-    "https://api-entrega-recepcion.umich.mx"  # opcional si pruebas directo
+    "http://localhost:3000", # Si tienes otro puerto o dominio para el front
+    "192.168.0.124:3000",
+    "*://*/*",  # Permitir todas las solicitudes de cualquier origen
+    "*" # Permitir todas las solicitudes de cualquier origen
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",  # Localhost con cualquier puerto
+    allow_origins=["*"],  # Permite todos los orígenes TEMPORALMENTE
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
     expose_headers=["*"]
 )
 
@@ -150,6 +156,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Usuario eliminado, no puedes iniciar sesión"
             )
+        
+        # obtener la unidad responsable del usuario
+        
         
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
@@ -230,18 +239,56 @@ def change_password(
         setattr(user, "password", get_password_hash(new_password))
         return {"message": "Contraseña actualizada exitosamente"}
 
-from fastapi import Depends, HTTPException, status
+# Agrega este endpoint temporal para diagnóstico
+@app.get("/debug/unidad-estructura")
+async def debug_unidad_estructura(db: Session = Depends(get_db)):
+    unidad_ejemplo = db.query(UnidadResponsable).first()
+    if not unidad_ejemplo:
+        return {"error": "No hay unidades en la base de datos"}
+    
+    return {
+        "columnas": unidad_ejemplo.__dict__,
+        "relaciones": [rel for rel in dir(unidad_ejemplo) if not rel.startswith('_')]
+    }
 
-@app.get("/me", response_model=UserResponse, tags=["Usuario"])
-async def read_users_me(
-    current_user: User = Depends(get_current_user)
+@app.get("/me/unidad", response_model=UnidadResponsableResponse)
+async def get_my_unidad_robust(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    if current_user.is_deleted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Usuario inactivo"
-        )
-    return jsonable_encoder(current_user)
+    # Consulta directa evitando problemas de relación
+    unidad = db.query(UnidadResponsable).filter(
+        UnidadResponsable.responsable == current_user.id
+    ).first()
+    
+    if not unidad:
+        raise HTTPException(404, "No tiene unidad asignada")
+    
+    # Construye respuesta manualmente
+    response_data = {
+        "id_unidad": unidad.id_unidad,
+        "nombre": unidad.nombre,
+        "fecha_creacion": unidad.fecha_creacion,
+        "fecha_cambio": unidad.fecha_cambio,
+        "responsable": None,
+        "dependientes": []
+    }
+    
+    # Agrega responsable si existe
+    if unidad.responsable:
+        response_data["responsable"] = {
+            "id": unidad.responsable.id,
+            "username": unidad.responsable.username
+        }
+    
+    # Agrega dependientes si existen
+    if hasattr(unidad, 'dependientes'):
+        response_data["dependientes"] = [
+            {"id_unidad": dep.id_unidad, "nombre": dep.nombre}
+            for dep in unidad.dependientes
+        ]
+    
+    return UnidadResponsableResponse(**response_data)
 
 # endpoint para arbol jerarquico de unidades responsables
 @app.get(
@@ -503,7 +550,7 @@ def actualizar_unidad(
     
     return db_unidad
 
-@app.get(
+""" @app.get(
     "/unidades_responsables",
     response_model=List[UnidadResponsableResponse],
     tags=["Unidades Responsables"]
@@ -513,13 +560,15 @@ def read_unidades(
     limit: int = 1000,
     id_unidad: Optional[int] = None,
     nombre: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    # current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     try:
-        # Construcción de la consulta base
-        query = db.query(UnidadResponsable)
-        
+        # Asegurarnos de que la relación se llama correctamente
+        query = db.query(UnidadResponsable).options(
+            joinedload(UnidadResponsable.usuario_responsable)  # Carga la relación
+        )
+
         # Aplicación de filtros
         if id_unidad:
             query = query.filter(UnidadResponsable.id_unidad == id_unidad)
@@ -544,8 +593,43 @@ def read_unidades(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al obtener unidades responsables: {str(e)}"
+        ) """
+
+from sqlalchemy.orm import joinedload
+
+@app.get("/unidades_responsables", 
+         response_model=List[UnidadResponsableResponse],
+         tags=["Unidades Responsables"])
+def read_unidades(db: Session = Depends(get_db)):
+    try:
+        # Usamos joinedload para cargar la relación en la misma consulta
+        query = db.query(UnidadResponsable).options(
+            joinedload(UnidadResponsable.usuario_responsable)
         )
         
+        unidades = query.all()
+        
+        # Transformamos los resultados
+        for unidad in unidades:
+            if unidad.usuario_responsable:
+                unidad.responsable = UserResponse(
+                    id=unidad.usuario_responsable.id,
+                    username=unidad.usuario_responsable.username,
+                    email=unidad.usuario_responsable.email,
+                    role=unidad.usuario_responsable.role,
+                    is_deleted=unidad.usuario_responsable.is_deleted
+                )
+            else:
+                unidad.responsable = None
+        
+        return unidades
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al obtener unidades: {str(e)}"
+        )
+
 @app.get(
     "/{unidad_id}",
     response_model=UnidadResponsableResponse,
@@ -676,20 +760,3 @@ def read_anexos(
         return anexos
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
-    
-# post para crear anexos
-@app.post("/anexos/", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
-    db_anexo = Anexos(**anexo.dict())
-    db.add(db_anexo)
-    db.commit()
-    db.refresh(db_anexo)
-    return db_anexo
-
-# get para consultar un anexo por id
-@app.get("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
-    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
-    if not db_anexo:
-        raise HTTPException(status_code=404, detail="Anexo no encontrado")
-    return db_anexo
