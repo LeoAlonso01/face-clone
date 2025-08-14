@@ -59,10 +59,7 @@ class User(Base):
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     posts = relationship("Post", back_populates="owner")
     
-    unidades_a_cargo = relationship(
-        "UnidadResponsable", 
-        back_populates="usuario_responsable", 
-        foreign_keys="[UnidadResponsable.responsable]")
+    unidad = relationship("UnidadResponsable", back_populates="usuario_responsable", uselist=False)
 
 class Post(Base):
     __tablename__ = "posts"
@@ -102,7 +99,7 @@ class UnidadResponsable(Base):
     # Relación con User
     usuario_responsable = relationship(
         "User", foreign_keys=[responsable],
-        back_populates="unidades_a_cargo",
+        back_populates="unidad",
         lazy="joined")
 
     class Config:

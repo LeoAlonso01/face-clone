@@ -29,6 +29,7 @@ from sqlalchemy.sql import text
 from contextlib import contextmanager
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -66,7 +67,6 @@ origins = [
     "http://localhost:5173",  # Asumiendo que tu front corre aquí
     "http://148.216.111.102",
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
-    "http://148.216.111.102:3000",
     "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/",
     "https://entrega-recepcion-git-91bd1d-utm221001tim-ut-moreliaes-projects.vercel.app/"
 ]
@@ -251,44 +251,26 @@ async def debug_unidad_estructura(db: Session = Depends(get_db)):
         "relaciones": [rel for rel in dir(unidad_ejemplo) if not rel.startswith('_')]
     }
 
-@app.get("/me/unidad", response_model=UnidadResponsableResponse)
-async def get_my_unidad_robust(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    # Consulta directa evitando problemas de relación
-    unidad = db.query(UnidadResponsable).filter(
-        UnidadResponsable.responsable == current_user.id
-    ).first()
+# endpont para obtener unidad por usuario
+@app.get("unidad_por_usuario/{user_id}")
+def obtener_unidad_por_usuario(user_id:int, db: Session = Depends(get_db)):
+    usuario = db.query(User).filter(User.id == user_id).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    if not unidad:
-        raise HTTPException(404, "No tiene unidad asignada")
-    
-    # Construye respuesta manualmente
-    response_data = {
+    if not usuario.unidad:
+        raise HTTPException(status_code=404, detail="El usuario no tiene una unidad responsable asignada")
+
+    unidad = usuario.unidad
+
+    return {
         "id_unidad": unidad.id_unidad,
         "nombre": unidad.nombre,
-        "fecha_creacion": unidad.fecha_creacion,
-        "fecha_cambio": unidad.fecha_cambio,
-        "responsable": None,
-        "dependientes": []
-    }
-    
-    # Agrega responsable si existe
-    if unidad.responsable:
-        response_data["responsable"] = {
+        "responsable": {
             "id": unidad.responsable.id,
-            "username": unidad.responsable.username
+            "nombre": unidad.responsable.nombre
         }
-    
-    # Agrega dependientes si existen
-    if hasattr(unidad, 'dependientes'):
-        response_data["dependientes"] = [
-            {"id_unidad": dep.id_unidad, "nombre": dep.nombre}
-            for dep in unidad.dependientes
-        ]
-    
-    return UnidadResponsableResponse(**response_data)
+    }
 
 # endpoint para arbol jerarquico de unidades responsables
 @app.get(
@@ -595,7 +577,7 @@ def read_unidades(
             detail=f"Error al obtener unidades responsables: {str(e)}"
         ) """
 
-from sqlalchemy.orm import joinedload
+
 
 @app.get("/unidades_responsables", 
          response_model=List[UnidadResponsableResponse],
