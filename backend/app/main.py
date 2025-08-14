@@ -58,21 +58,20 @@ app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost",
-    "http://localhost:5173",  # Asumiendo que tu front corre aquí
+    "http://localhost:5173",
     "http://148.216.111.144",
-    "http://localhost:3000", # Si tienes otro puerto o dominio para el front
-    "192.168.0.124:3000",
-    "*://*/*",  # Permitir todas las solicitudes de cualquier origen
-    "*" # Permitir todas las solicitudes de cualquier origen
+    "http://localhost:3000",
+    "http://192.168.0.124:3000",
+    "https://entrega-recepcion-frontend-89p1.vercel.app",  # dominio real en Vercel
+    "https://api-entrega-recepcion.umich.mx"  # opcional si pruebas directo
 ]
 
-# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["POST", "GET", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_methods=["*"],
+    allow_headers=["*"],
     expose_headers=["*"]
 )
 
@@ -677,3 +676,20 @@ def read_anexos(
         return anexos
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
+    
+# post para crear anexos
+@app.post("/anexos/", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
+    db_anexo = Anexos(**anexo.dict())
+    db.add(db_anexo)
+    db.commit()
+    db.refresh(db_anexo)
+    return db_anexo
+
+# get para consultar un anexo por id
+@app.get("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
+    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
+    if not db_anexo:
+        raise HTTPException(status_code=404, detail="Anexo no encontrado")
+    return db_anexo
