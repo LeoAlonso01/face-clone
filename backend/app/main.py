@@ -65,7 +65,6 @@ app = FastAPI(lifespan=lifespan)
 origins = [
     "http://localhost",
     "http://localhost:5173",  # Asumiendo que tu front corre aquí
-    "http://148.216.111.102",
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
     "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/",
     "https://entrega-recepcion-git-91bd1d-utm221001tim-ut-moreliaes-projects.vercel.app/"
@@ -252,7 +251,7 @@ async def debug_unidad_estructura(db: Session = Depends(get_db)):
     }
 
 # endpont para obtener unidad por usuario
-@app.get("unidad_por_usuario/{user_id}")
+@app.get("/unidad_por_usuario/{user_id}")
 def obtener_unidad_por_usuario(user_id:int, db: Session = Depends(get_db)):
     usuario = db.query(User).filter(User.id == user_id).first()
     if not usuario:
@@ -267,8 +266,8 @@ def obtener_unidad_por_usuario(user_id:int, db: Session = Depends(get_db)):
         "id_unidad": unidad.id_unidad,
         "nombre": unidad.nombre,
         "responsable": {
-            "id": unidad.responsable.id,
-            "nombre": unidad.responsable.nombre
+            "id": unidad.usuario_responsable.id,
+            "nombre": unidad.usuario_responsable.username
         }
     }
 

@@ -13,12 +13,19 @@ class UserRoles(str, Enum):
 
 # Esquema base para usuario
 class UserBase(BaseModel):
-    id: int
-    username: str
+    # compatible con respnsable en unidadresponsable 
+    id: Optional[int] = None
+    username: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[UserRoles] = None
     
+
+
 
 # Esquema para creación de usuario (incluye password)
 class UserCreate(UserBase):
+    username: str
+    email: str
     password: str
 
 class UserDB(UserBase):
@@ -78,7 +85,8 @@ class UnidadResponsableBase(BaseModel):
     codigo_postal: Optional[str] = None
     rfc: Optional[str] = None
     correo_electronico: Optional[str] = None
-    responsable: Optional[UserBase] = None
+    # el responsabl edebe ser compatibel con usuario 
+    responsable: Optional[UserBase] = None  # Asegúrate que UserBase esté bien definido 
     tipo_unidad: Optional[str] = None
     unidad_padre_id: Optional[int] = None  # ID de la unidad responsable padre
 
