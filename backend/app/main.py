@@ -183,7 +183,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @app.get("/users", response_model=list[UserResponse], tags=["Usuario"])
 def get_users(skip: int = 0, 
         limit: int = 1000, 
-        current_user: User = Depends(get_current_user)):
+        #current_user: User = Depends(get_current_user)
+        ):
     with session_scope() as db:
         users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
         return jsonable_encoder(users)
