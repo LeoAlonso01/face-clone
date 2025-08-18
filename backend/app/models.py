@@ -31,6 +31,7 @@ class UserCreate(BaseModel):
     username: str
     email: str
     password: str
+    role: UserRoles
 
     class Config:
         orm_mode = True

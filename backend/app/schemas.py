@@ -56,8 +56,6 @@ class UserResponse(UserBase):
     username: str
     email: str
     role: Optional[str] = None  # Ahora es opcional sin valor por defecto
-    created_at: datetime
-    updated_at: datetime
     is_deleted: bool
     unidad_responsable: Optional[UnidadResponsableSimple] = None
 

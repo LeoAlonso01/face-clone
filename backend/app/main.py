@@ -120,15 +120,28 @@ def register(user: UserCreate):
             )
 
         hashed_password = get_password_hash(user.password)
+
         db_user = User(
             username=user.username,
             email=user.email,
             password=hashed_password,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            is_deleted=False,
             role= None # asignar sin valor por defecto
         )
         db.add(db_user)
         db.flush()
-        return {"message": "Usuario registrado exitosamente"}
+
+        return {
+            "message": "Usuario registrado exitosamente",
+            "user:" : {
+                "id": db_user.id,
+                "username": db_user.username,
+                "email": db_user.email,
+                "role": db_user.role.value if isinstance(db_user.role, Enum) else db_user.role
+            }
+        }
 
 @app.post("/token", tags=["Usuario"])
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
