@@ -29,6 +29,7 @@ from sqlalchemy.sql import text
 from contextlib import contextmanager
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -64,21 +65,19 @@ app = FastAPI(lifespan=lifespan)
 origins = [
     "http://localhost",
     "http://localhost:5173",  # Asumiendo que tu front corre aquí
-    "http://148.216.111.144",
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
-    "192.168.0.124:3000",
-    "*://*/*",  # Permitir todas las solicitudes de cualquier origen
-    "*" # Permitir todas las solicitudes de cualquier origen
+    "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/",
+    "https://entrega-recepcion-git-91bd1d-utm221001tim-ut-moreliaes-projects.vercel.app/"
 ]
 
+# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",  # Localhost con cualquier puerto
     allow_origins=["*"],  # Permite todos los orígenes TEMPORALMENTE
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"]
+    allow_headers=["*"]
 )
 
 @app.get("/", tags=["Root"])
@@ -121,15 +120,28 @@ def register(user: UserCreate):
             )
 
         hashed_password = get_password_hash(user.password)
+
         db_user = User(
             username=user.username,
             email=user.email,
             password=hashed_password,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            is_deleted=False,
             role= None # asignar sin valor por defecto
         )
         db.add(db_user)
         db.flush()
-        return {"message": "Usuario registrado exitosamente"}
+
+        return {
+            "message": "Usuario registrado exitosamente",
+            "user:" : {
+                "id": db_user.id,
+                "username": db_user.username,
+                "email": db_user.email,
+                "role": db_user.role.value if isinstance(db_user.role, Enum) else db_user.role
+            }
+        }
 
 @app.post("/token", tags=["Usuario"])
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -184,7 +196,8 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @app.get("/users", response_model=list[UserResponse], tags=["Usuario"])
 def get_users(skip: int = 0, 
         limit: int = 1000, 
-        current_user: User = Depends(get_current_user)):
+        #current_user: User = Depends(get_current_user)
+        ):
     with session_scope() as db:
         users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
         return jsonable_encoder(users)
@@ -251,44 +264,26 @@ async def debug_unidad_estructura(db: Session = Depends(get_db)):
         "relaciones": [rel for rel in dir(unidad_ejemplo) if not rel.startswith('_')]
     }
 
-@app.get("/me/unidad", response_model=UnidadResponsableResponse)
-async def get_my_unidad_robust(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    # Consulta directa evitando problemas de relación
-    unidad = db.query(UnidadResponsable).filter(
-        UnidadResponsable.responsable == current_user.id
-    ).first()
+# endpont para obtener unidad por usuario
+@app.get("/unidad_por_usuario/{user_id}")
+def obtener_unidad_por_usuario(user_id:int, db: Session = Depends(get_db)):
+    usuario = db.query(User).filter(User.id == user_id).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    if not unidad:
-        raise HTTPException(404, "No tiene unidad asignada")
-    
-    # Construye respuesta manualmente
-    response_data = {
+    if not usuario.unidad:
+        raise HTTPException(status_code=404, detail="El usuario no tiene una unidad responsable asignada")
+
+    unidad = usuario.unidad
+
+    return {
         "id_unidad": unidad.id_unidad,
         "nombre": unidad.nombre,
-        "fecha_creacion": unidad.fecha_creacion,
-        "fecha_cambio": unidad.fecha_cambio,
-        "responsable": None,
-        "dependientes": []
-    }
-    
-    # Agrega responsable si existe
-    if unidad.responsable:
-        response_data["responsable"] = {
-            "id": unidad.responsable.id,
-            "username": unidad.responsable.username
+        "responsable": {
+            "id": unidad.usuario_responsable.id,
+            "nombre": unidad.usuario_responsable.username
         }
-    
-    # Agrega dependientes si existen
-    if hasattr(unidad, 'dependientes'):
-        response_data["dependientes"] = [
-            {"id_unidad": dep.id_unidad, "nombre": dep.nombre}
-            for dep in unidad.dependientes
-        ]
-    
-    return UnidadResponsableResponse(**response_data)
+    }
 
 # endpoint para arbol jerarquico de unidades responsables
 @app.get(
@@ -595,7 +590,7 @@ def read_unidades(
             detail=f"Error al obtener unidades responsables: {str(e)}"
         ) """
 
-from sqlalchemy.orm import joinedload
+
 
 @app.get("/unidades_responsables", 
          response_model=List[UnidadResponsableResponse],
@@ -760,3 +755,20 @@ def read_anexos(
         return anexos
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
+    
+# get by id
+@app.get("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
+    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
+    if not db_anexo:
+        raise HTTPException(status_code=404, detail="Anexo no encontrado")
+    return db_anexo
+
+# add by POST
+@app.post("/anexos/", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
+    db_anexo = Anexos(**anexo.dict())
+    db.add(db_anexo)
+    db.commit()
+    db.refresh(db_anexo)
+    return db_anexo
