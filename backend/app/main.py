@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Depends, status, Body, Query 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .database import Base, engine
-from typing import List, Optional
+from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
@@ -19,16 +19,16 @@ from .auth import (
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import Anexos, User, UserRoles, UserCreate, UserResponse, UnidadResponsable
-from .models import ActaEntregaRecepcion as ActaModel
-from .schemas import ActaEntregaRecepcion as ActaSchema
-from .schemas import AnexoBase, AnexoCreate, AnexoResponse
-from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UnidadResponsableSimple, UserCreate, UserBase
+from .schemas import ActaResponse, ActaCreate, ActaWithUnidadResponse, ActaUpdate
+from .models import ActaEntregaRecepcion
+from .schemas import AnexoCreate, AnexoResponse
+from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql import text
 from contextlib import contextmanager
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import joinedload
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -67,8 +67,9 @@ origins = [
     "http://148.216.111.144",
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
     "192.168.0.124:3000",
-    "*://*/*",  # Permitir todas las solicitudes de cualquier origen
-    "*" # Permitir todas las solicitudes de cualquier origen
+    "http://localhost:3000", # Si tienes otro puerto o dominio para el front
+    "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/",
+    "https://entrega-recepcion-git-91bd1d-utm221001tim-ut-moreliaes-projects.vercel.app/"
 ]
 
 app.add_middleware(
@@ -121,15 +122,28 @@ def register(user: UserCreate):
             )
 
         hashed_password = get_password_hash(user.password)
+
         db_user = User(
             username=user.username,
             email=user.email,
             password=hashed_password,
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+            is_deleted=False,
             role= None # asignar sin valor por defecto
         )
         db.add(db_user)
         db.flush()
-        return {"message": "Usuario registrado exitosamente"}
+
+        return {
+            "message": "Usuario registrado exitosamente",
+            "user:" : {
+                "id": db_user.id,
+                "username": db_user.username,
+                "email": db_user.email,
+                "role": db_user.role.value if isinstance(db_user.role, Enum) else db_user.role
+            }
+        }
 
 @app.post("/token", tags=["Usuario"])
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -184,13 +198,17 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 @app.get("/users", response_model=list[UserResponse], tags=["Usuario"])
 def get_users(skip: int = 0, 
         limit: int = 1000, 
-        current_user: User = Depends(get_current_user)):
+        #current_user: User = Depends(get_current_user)
+        ):
     with session_scope() as db:
         users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
         return jsonable_encoder(users)
 
 @app.get("/users/{user_id}", tags=["Usuario"])
-def read_user(user_id: int, current_user: User = Depends(get_current_user)):
+def read_user(
+    user_id: int, 
+    # current_user: User = Depends(get_current_user)
+    ):
     with session_scope() as db:
         user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
         if user is None:
@@ -214,7 +232,7 @@ def change_password(
     user_id: int,
     current_password: str = Body(...),
     new_password: str = Body(...),
-    current_user: User = Depends(get_current_user),
+    # current_user: User = Depends(get_current_user),
 ):
     with session_scope() as db:
         user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
@@ -228,12 +246,6 @@ def change_password(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Contraseña actual incorrecta",
-            )
-        
-        if getattr(current_user, "id", None) != getattr(user, "id", None):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No tienes permiso para realizar esta acción",
             )
 
         setattr(user, "password", get_password_hash(new_password))
@@ -251,44 +263,26 @@ async def debug_unidad_estructura(db: Session = Depends(get_db)):
         "relaciones": [rel for rel in dir(unidad_ejemplo) if not rel.startswith('_')]
     }
 
-@app.get("/me/unidad", response_model=UnidadResponsableResponse)
-async def get_my_unidad_robust(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    # Consulta directa evitando problemas de relación
-    unidad = db.query(UnidadResponsable).filter(
-        UnidadResponsable.responsable == current_user.id
-    ).first()
+# endpont para obtener unidad por usuario
+@app.get("/unidad_por_usuario/{user_id}")
+def obtener_unidad_por_usuario(user_id:int, db: Session = Depends(get_db)):
+    usuario = db.query(User).filter(User.id == user_id).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    if not unidad:
-        raise HTTPException(404, "No tiene unidad asignada")
-    
-    # Construye respuesta manualmente
-    response_data = {
+    if not usuario.unidad:
+        raise HTTPException(status_code=404, detail="El usuario no tiene una unidad responsable asignada")
+
+    unidad = usuario.unidad
+
+    return {
         "id_unidad": unidad.id_unidad,
         "nombre": unidad.nombre,
-        "fecha_creacion": unidad.fecha_creacion,
-        "fecha_cambio": unidad.fecha_cambio,
-        "responsable": None,
-        "dependientes": []
-    }
-    
-    # Agrega responsable si existe
-    if unidad.responsable:
-        response_data["responsable"] = {
-            "id": unidad.responsable.id,
-            "username": unidad.responsable.username
+        "responsable": {
+            "id": unidad.usuario_responsable.id,
+            "nombre": unidad.usuario_responsable.username
         }
-    
-    # Agrega dependientes si existen
-    if hasattr(unidad, 'dependientes'):
-        response_data["dependientes"] = [
-            {"id_unidad": dep.id_unidad, "nombre": dep.nombre}
-            for dep in unidad.dependientes
-        ]
-    
-    return UnidadResponsableResponse(**response_data)
+    }
 
 # endpoint para arbol jerarquico de unidades responsables
 @app.get(
@@ -595,7 +589,7 @@ def read_unidades(
             detail=f"Error al obtener unidades responsables: {str(e)}"
         ) """
 
-from sqlalchemy.orm import joinedload
+
 
 @app.get("/unidades_responsables", 
          response_model=List[UnidadResponsableResponse],
@@ -631,7 +625,7 @@ def read_unidades(db: Session = Depends(get_db)):
         )
 
 @app.get(
-    "/{unidad_id}",
+    "unidades_responsables/{unidad_id}",
     response_model=UnidadResponsableResponse,
     tags=["Unidades Responsables"]
 )
@@ -645,7 +639,7 @@ def get_unidad(
     return db_unidad
 
 @app.put(
-    "/{unidad_id}/asignar-responsable",
+    "unidades_responsables/{unidad_id}/asignar-responsable",
     tags=["Unidades Responsables"]
 )
 def asignar_responsable(
@@ -670,83 +664,92 @@ def asignar_responsable(
     
     return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
 
-@app.post("/actas/", response_model=ActaSchema, tags=["Actas de Entrega Recepción"])
-def create_acta(
-    acta: ActaSchema,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    def parse_datetime(value):
-        try:
-            return datetime.fromisoformat(value)
-        except:
-            return None
+# endpoints para las actas entregarecepcion
 
-    db_acta = ActaModel(
-        **acta.dict(exclude={"creado_en", "actualizado_en"}),
-        creado_en=datetime.utcnow(),
-        actualizado_en=datetime.utcnow()
-    )
-
-    db.add(db_acta)
-    db.commit()
-    db.refresh(db_acta)
-    return db_acta
-
-@app.get("/actas/", tags=["Actas de Entrega Recepción"], response_model=List[ActaSchema])
-def read_actas(
-    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
-    limit: int = Query(1000, le=1000, description="Número máximo de registros a devolver"),
-    db: Session = Depends(get_db),
-):
+@app.get("/actas", response_model=List[ActaResponse], tags=["Actas de Entrega Recepción"])
+def read_actas(skip: int = 0, limit = 1000, db: Session = Depends(get_db)):
     """
-    Obtiene una lista paginada de actas de entrega-recepción.
-    
-    Parámetros:
-    - skip: Registros a saltar (default 0)
-    - limit: Límite de registros (max 1000)
+    Obtener Actas sin datos de unidad pero si no hay un arreglo vacio
     """
     try:
-        actas = db.query(ActaModel)\
-                 .order_by(ActaModel.fecha.desc())\
-                 .offset(skip)\
-                 .limit(limit)\
-                 .all()
+        actas = db.query(ActaEntregaRecepcion).offset(skip).limit(limit).all()
+        if not actas:
+            return []
         return actas
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    
-@app.get("/actas/{acta_id}", response_model=ActaSchema, tags=["Actas de Entrega Recepción"])
+        raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
+
+
+@app.get("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
 def read_acta(acta_id: int, db: Session = Depends(get_db)):
-    db_acta = db.query(ActaModel).filter(ActaModel.id == acta_id).first()
+    db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
     return db_acta
 
-@app.put("/actas/{acta_id}", response_model=ActaSchema , tags=["Actas de Entrega Recepción"])
-def update_acta(acta_id: int, acta: ActaSchema, db: Session = Depends(get_db)):
-    db_acta = db.query(ActaModel).filter(ActaModel.id == acta_id).first()
-    if db_acta is None:
+@app.post("/actas", response_model=ActaResponse, status_code=status.HTTP_201_CREATED)
+def crear_acta(acta: ActaCreate, db: Session = Depends(get_db)):
+    """
+    Crear una nueva acta de entrega-recepción
+    """
+    try:
+        # Validar que la unidad responsable existe
+        unidad = db.query(UnidadResponsable).filter(
+            UnidadResponsable.id_unidad == acta.unidad_responsable
+        ).first()
+        
+        if not unidad:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unidad responsable con ID {acta.unidad_responsable} no existe"
+            )
+        
+        # Verificar si ya existe un folio
+        existing_acta = db.query(ActaEntregaRecepcion).filter(
+            ActaEntregaRecepcion.folio == acta.folio
+        ).first()
+        
+        if existing_acta:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ya existe un acta con el folio {acta.folio}"
+            )
+        
+        # Crear nueva acta
+        db_acta = ActaEntregaRecepcion(**acta.dict())
+        db.add(db_acta)
+        db.commit()
+        db.refresh(db_acta)
+        
+        # Si los campos de fecha son None, asignar valores por defecto
+        if db_acta.creado_en is None:
+            db_acta.creado_en = datetime.utcnow()
+        if db_acta.actualizado_en is None:
+            db_acta.actualizado_en = datetime.utcnow()
+            
+        db.commit()
+        db.refresh(db_acta)
+        
+        return db_acta
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error al crear acta: {str(e)}")
+
+@app.put("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
+def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
+    db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
+    if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
-    for key, value in acta.dict().items():
+    for key, value in acta.dict(exclude_unset=True).items():
         setattr(db_acta, key, value)
     db.commit()
     db.refresh(db_acta)
     return db_acta
 
-# borrado logico de actas
-@app.delete("/actas/{acta_id}", status_code=204, tags=["Actas de Entrega Recepción"])
-def delete_acta(acta_id: int, db: Session = Depends(get_db)):
-    db_acta = db.query(ActaModel).filter(ActaModel.id == acta_id).first()
-    if db_acta is None:
-        raise HTTPException(status_code=404, detail="Acta no encontrada")
-    
-    # Borrado lógico
-    db.delete(db_acta)
-    db.commit()
-    return {"message": "Acta eliminada correctamente"}
-
-
+# endpoints para anexos #############################################################################################
 @app.get("/anexos/", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
 def read_anexos(
     skip: int = Query(0, ge=0, description="Número de registros a saltar"),
