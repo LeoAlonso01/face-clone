@@ -747,14 +747,14 @@ def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
     return db_acta
 
 # endpoints para anexos #############################################################################################
-@app.get("/anexos/", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
+@app.get("/anexos", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
 def read_anexos(
-    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
-    limit: int = Query(1000, le=1000, description="Número máximo de registros a devolver"),
+    skip: int = 0,
+    limit: int = 1000,
     db: Session = Depends(get_db)
 ):
     try:
-        anexos = db.query(Anexos).filter(Anexos.is_deleted == False).limit(limit).all()
+        anexos = db.query(Anexos).filter(Anexos.is_deleted == False).offset(skip).limit(limit).all()
         if not anexos:
             return []
         return anexos
@@ -762,7 +762,7 @@ def read_anexos(
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
     
 # get by id
-@app.get("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+@app.get("/anexos{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
 def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
     db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
     if not db_anexo:
@@ -770,7 +770,7 @@ def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
     return db_anexo
 
 # add by POST
-@app.post("/anexos/", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+@app.post("/anexos", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
 def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
     db_anexo = Anexos(**anexo.dict())
     db.add(db_anexo)
