@@ -5,7 +5,7 @@ from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
-from datetime import timedelta, datetime
+from datetime import date, timedelta, datetime
 from enum import Enum
 import logging
 from .auth import (
@@ -820,21 +820,33 @@ def read_anexos(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
     
+# add by POST
+@app.post("/anexos", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
+    
+    db_anexo = Anexos(clave=anexo.clave,
+        creador_id=anexo.creador_id,
+        datos=anexo.datos,
+        estado=anexo.estado,
+        unidad_responsable_id=anexo.unidad_responsable_id,
+        fecha_creacion=anexo.fecha_creacion or datetime.utcnow(),
+        creado_en=date.today(),
+        actualizado_en=date.today(),
+        is_deleted=False)
+    
+    db.add(db_anexo)
+    db.commit()
+    db.refresh(db_anexo)
+    return db_anexo
+    
 # get by id
-@app.get("/anexos{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+@app.get("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
 def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
     db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
     if not db_anexo:
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
     return db_anexo
 
-# add by POST
-@app.post("/anexos", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
-    db_anexo = Anexos(**anexo.dict())
-    db.add(db_anexo)
-    db.commit()
-    db.refresh(db_anexo)
-    return db_anexo
+
 
 # upload pdf 
