@@ -29,6 +29,35 @@ from sqlalchemy.sql import text
 from contextlib import contextmanager
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
+from fastapi import UploadFile, File
+import os
+from fastapi.staticfiles import StaticFiles
+
+
+UPLOAD_DIR = "/app/uploads/pdfs"
+STATIC_DIR = "/app/static/pdfs"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
+
+async def save_pdf(file: UploadFile):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Solo se permiten PDFs")
+
+    filename = file.filename
+    upload_path = os.path.join(UPLOAD_DIR, filename)
+    static_path = os.path.join(STATIC_DIR, filename)
+
+    # Guardar en uploads
+    with open(upload_path, "wb") as f:
+        f.write(await file.read())
+
+    # Copiar a static para servirlo
+    import shutil
+    shutil.copy(upload_path, static_path)
+
+    # URL pública
+    file_url = f"http://localhost:8000/static/pdfs/{filename}"
+    return {"file_url": file_url}
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -79,9 +108,36 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+app.mount("/static", StaticFiles(directory="/app/static"), name="static")
+
 @app.get("/", tags=["Root"])
 def read_root():
     return {"message": "SERUMICH 2.0 API is running"}
+
+@app.post("/pdf", tags=["Archivos"])
+async def upload_pdf(file: UploadFile = File(...)):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
+
+    # Generar nombre único
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{timestamp}_{file.filename}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    static_path = os.path.join(STATIC_DIR, filename)
+
+    # Guardar en uploads
+    content = await file.read()
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
+
+    # Copiar a static para servirlo públicamente
+    with open(static_path, "wb") as buffer:
+        buffer.write(content)
+
+    # URL pública
+    file_url = f"http://localhost:8000/static/pdfs/{filename}"
+
+    return {"file_url": file_url}
 
 @app.get("/usuarios_contraloria", tags=["Usuario"])
 def contraloria_users():
@@ -622,7 +678,7 @@ def read_unidades(db: Session = Depends(get_db)):
         )
 
 @app.get(
-    "unidades_responsables/{unidad_id}",
+    "/unidades_responsables/{unidad_id}",
     response_model=UnidadResponsableResponse,
     tags=["Unidades Responsables"]
 )
@@ -636,7 +692,7 @@ def get_unidad(
     return db_unidad
 
 @app.put(
-    "unidades_responsables/{unidad_id}/asignar-responsable",
+    "/unidades_responsables/{unidad_id}/asignar-responsable",
     tags=["Unidades Responsables"]
 )
 def asignar_responsable(
@@ -650,16 +706,19 @@ def asignar_responsable(
         raise HTTPException(status_code=404, detail="Unidad no encontrada")
     
     # Verificar que existe el usuario
-    db_usuario = db.query(User).filter(User.id_usuario == usuario_id).first()
+    db_usuario = db.query(User).filter(User.id_usuario == usuario_id, User.is_deleted == False).first()
     if not db_usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     # Asignar responsable
-    db_unidad.responsable_id = usuario_id  # Usa el nombre correcto del campo FK en tu modelo
+    db_unidad.responsable = db_usuario  # Usa el nombre correcto del campo FK en tu modelo
     db.commit()
     db.refresh(db_unidad)
     
     return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
+
+
+
 
 # endpoints para las actas entregarecepcion
 
@@ -777,3 +836,5 @@ def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_anexo)
     return db_anexo
+
+# upload pdf 
