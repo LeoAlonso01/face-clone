@@ -13,12 +13,19 @@ class UserRoles(str, Enum):
 
 # Esquema base para usuario
 class UserBase(BaseModel):
-    id: int
-    username: str
+    # compatible con respnsable en unidadresponsable 
+    id: Optional[int] = None
+    username: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[UserRoles] = None
     
+
+
 
 # Esquema para creación de usuario (incluye password)
 class UserCreate(UserBase):
+    username: str
+    email: str
     password: str
 
 class UserDB(UserBase):
@@ -49,8 +56,6 @@ class UserResponse(UserBase):
     username: str
     email: str
     role: Optional[str] = None  # Ahora es opcional sin valor por defecto
-    created_at: datetime
-    updated_at: datetime
     is_deleted: bool
     unidad_responsable: Optional[UnidadResponsableSimple] = None
 
@@ -78,7 +83,8 @@ class UnidadResponsableBase(BaseModel):
     codigo_postal: Optional[str] = None
     rfc: Optional[str] = None
     correo_electronico: Optional[str] = None
-    responsable: Optional[UserBase] = None
+    # el responsabl edebe ser compatibel con usuario 
+    responsable: Optional[UserBase] = None  # Asegúrate que UserBase esté bien definido 
     tipo_unidad: Optional[str] = None
     unidad_padre_id: Optional[int] = None  # ID de la unidad responsable padre
 
@@ -138,11 +144,110 @@ class UnidadJerarquicaResponse(BaseModel):
     class Config:
         orm_mode = True
 
-class ActaEntregaRecepcionBase(BaseModel):
-    # campos con valores por defecto
-    id: Optional[int] = None
-    creado_en: Optional[str] = None
-    actualizado_en: Optional[str] = None
+# Esquema para Anexo
+class AnexoBase(BaseModel):
+    id: int
+    clave: int | None
+    creador_id: int | None
+    fecha_creacion: datetime | None
+    datos: dict | None
+    estado: str | None
+    unidad_responsable_id: int | None
+    creado_en: datetime
+    actualizado_en: datetime
+    is_deleted: bool = False  # Soft delete
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None,
+            date: lambda v: v.isoformat() if v else None,
+            dict: lambda v: v if isinstance(v, dict) else None
+        }
+        orm_mode = True
+
+# schema para acta entrega recepcion
+# esquema para crear un anexo###################################################################################
+
+# Schema para crear actas (POST)
+# Schema base para Acta (sin relaciones)
+class ActaCreate(BaseModel):
+    unidad_responsable: int = Field(..., description="ID de la unidad responsable")
+    folio: str = Field(..., description="Número de folio del acta")
+    fecha: str = Field(..., description="Fecha del acta (YYYY-MM-DD)")
+    hora: Optional[str] = Field(None, description="Hora del acta (HH:MM)")
+    comisionado: str = Field(..., description="Nombre del comisionado")
+    oficio_comision: Optional[str] = Field(None, description="Número de oficio de comisión")
+    fecha_oficio_comision: Optional[str] = Field(None, description="Fecha del oficio de comisión")
+    entrante: Optional[str] = Field(None, description="Nombre de la persona entrante")
+    ine_entrante: Optional[str] = Field(None, description="INE de la persona entrante")
+    fecha_inicio_labores: Optional[str] = Field(None, description="Fecha de inicio de labores")
+    nombramiento: Optional[str] = Field(None, description="Tipo de nombramiento")
+    fecha_nombramiento: Optional[str] = Field(None, description="Fecha del nombramiento")
+    asignacion: Optional[str] = Field(None, description="Tipo de asignación")
+    asignado_por: Optional[str] = Field(None, description="Quién realiza la asignación")
+    domicilio_entrante: Optional[str] = Field(None, description="Domicilio de la persona entrante")
+    telefono_entrante: Optional[str] = Field(None, description="Teléfono de la persona entrante")
+    saliente: Optional[str] = Field(None, description="Nombre de la persona saliente")
+    fecha_fin_labores: Optional[str] = Field(None, description="Fecha de fin de labores")
+    testigo_entrante: Optional[str] = Field(None, description="Nombre del testigo entrante")
+    ine_testigo_entrante: Optional[str] = Field(None, description="INE del testigo entrante")
+    testigo_saliente: Optional[str] = Field(None, description="Nombre del testigo saliente")
+    ine_testigo_saliente: Optional[str] = Field(None, description="INE del testigo saliente")
+    fecha_cierre_acta: Optional[str] = Field(None, description="Fecha de cierre del acta")
+    hora_cierre_acta: Optional[str] = Field(None, description="Hora de cierre del acta")
+    observaciones: Optional[str] = Field(None, description="Observaciones adicionales")
+    estado: Optional[str] = Field("Pendiente", description="Estado del acta")
+
+class ActaCreate(BaseModel):
+    pass
+
+# Schema para respuesta básica de Acta
+class ActaResponse(BaseModel):
+    id: int
+    unidad_responsable: int
+    folio: str
+    fecha: str
+    hora: Optional[str]
+    comisionado: str
+    oficio_comision: Optional[str]
+    fecha_oficio_comision: Optional[str]
+    entrante: Optional[str]
+    ine_entrante: Optional[str]
+    fecha_inicio_labores: Optional[str]
+    nombramiento: Optional[str]
+    fecha_nombramiento: Optional[str]
+    asignacion: Optional[str]
+    asignado_por: Optional[str]
+    domicilio_entrante: Optional[str]
+    telefono_entrante: Optional[str]
+    saliente: Optional[str]
+    fecha_fin_labores: Optional[str]
+    testigo_entrante: Optional[str]
+    ine_testigo_entrante: Optional[str]
+    testigo_saliente: Optional[str]
+    ine_testigo_saliente: Optional[str]
+    fecha_cierre_acta: Optional[str]
+    hora_cierre_acta: Optional[str]
+    observaciones: Optional[str]
+    estado: Optional[str]
+    # Hacer estos campos opcionales temporalmente
+    creado_en: Optional[datetime] = None
+    actualizado_en: Optional[datetime] = None
+
+
+    class Config:
+        from_attributes = True
+
+# Schema para respuesta con datos de unidad
+class ActaWithUnidadResponse(ActaResponse):
+    unidad_nombre: Optional[str] = None
+    unidad_descripcion: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class ActaUpdate(BaseModel):
     unidad_responsable: Optional[int] = None
     folio: Optional[str] = None
     fecha: Optional[str] = None
@@ -169,46 +274,9 @@ class ActaEntregaRecepcionBase(BaseModel):
     hora_cierre_acta: Optional[str] = None
     observaciones: Optional[str] = None
     estado: Optional[str] = None
-
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None,
-            time: lambda v: v.isoformat() if v else None
-        }
-   
-
-class ActaEntregaRecepcionCreate(ActaEntregaRecepcionBase):
-    pass
-
-class ActaEntregaRecepcion(ActaEntregaRecepcionBase):
-    id: int
-    creado_en: datetime
-    actualizado_en: datetime
-
-    class Config:
-        orm_mode = True
-
-# Esquema para Anexo
-class AnexoBase(BaseModel):
-    id: int
-    clave: int | None
-    creador_id: int | None
-    fecha_creacion: datetime | None
-    datos: dict | None
-    estado: str | None
-    unidad_responsable_id: int | None
-    creado_en: datetime
-    actualizado_en: datetime
-    is_deleted: bool = False  # Soft delete
-
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None,
-            dict: lambda v: v if isinstance(v, dict) else None
-        }
+    # Hacer estos campos opcionales temporalmente
+    creado_en: Optional[datetime] = None
+    actualizado_en: Optional[datetime] = None
 
 class AnexoCreate(AnexoBase):
     clave:str

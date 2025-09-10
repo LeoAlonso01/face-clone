@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from .database import Base
 from datetime import datetime, date, time
 from sqlalchemy import ForeignKey
+from sqlalchemy.sql import func
 from typing import Optional
 from sqlalchemy import Boolean
 from enum import Enum as PyEnum
@@ -31,6 +32,7 @@ class UserCreate(BaseModel):
     username: str
     email: str
     password: str
+    role: UserRoles
 
     class Config:
         orm_mode = True
@@ -59,10 +61,7 @@ class User(Base):
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     posts = relationship("Post", back_populates="owner")
     
-    unidades_a_cargo = relationship(
-        "UnidadResponsable", 
-        back_populates="usuario_responsable", 
-        foreign_keys="[UnidadResponsable.responsable]")
+    unidad = relationship("UnidadResponsable", back_populates="usuario_responsable", uselist=False)
 
 class Post(Base):
     __tablename__ = "posts"
@@ -102,8 +101,9 @@ class UnidadResponsable(Base):
     # Relación con User
     usuario_responsable = relationship(
         "User", foreign_keys=[responsable],
-        back_populates="unidades_a_cargo",
+        back_populates="unidad",
         lazy="joined")
+    actas = relationship("ActaEntregaRecepcion", back_populates="unidad")
 
     class Config:
         orm_mode = True
@@ -140,8 +140,11 @@ class ActaEntregaRecepcion(Base):
     hora_cierre_acta = Column(String, nullable=True)
     observaciones = Column(Text, nullable=True)
     estado = Column(String, nullable=True)
-    creado_en = Column(Date)
-    actualizado_en = Column(Date)
+    creado_en = Column(DateTime, server_default=func.now())
+    actualizado_en = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # relacion con unidades responsables
+    unidad = relationship("UnidadResponsable", back_populates="actas")
 
 class Anexos(Base):
     __tablename__ = "anexos"
