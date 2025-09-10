@@ -5,7 +5,7 @@ from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
-from datetime import timedelta, datetime
+from datetime import date, timedelta, datetime
 from enum import Enum
 import logging
 from .auth import (
@@ -31,6 +31,35 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
+from fastapi import UploadFile, File
+import os
+from fastapi.staticfiles import StaticFiles
+
+
+UPLOAD_DIR = "/app/uploads/pdfs"
+STATIC_DIR = "/app/static/pdfs"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(STATIC_DIR, exist_ok=True)
+
+async def save_pdf(file: UploadFile):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Solo se permiten PDFs")
+
+    filename = file.filename
+    upload_path = os.path.join(UPLOAD_DIR, filename)
+    static_path = os.path.join(STATIC_DIR, filename)
+
+    # Guardar en uploads
+    with open(upload_path, "wb") as f:
+        f.write(await file.read())
+
+    # Copiar a static para servirlo
+    import shutil
+    shutil.copy(upload_path, static_path)
+
+    # URL pública
+    file_url = f"http://localhost:8000/static/pdfs/{filename}"
+    return {"file_url": file_url}
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -81,9 +110,36 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+app.mount("/static", StaticFiles(directory="/app/static"), name="static")
+
 @app.get("/", tags=["Root"])
 def read_root():
     return {"message": "SERUMICH 2.0 API is running"}
+
+@app.post("/pdf", tags=["Archivos"])
+async def upload_pdf(file: UploadFile = File(...)):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
+
+    # Generar nombre único
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{timestamp}_{file.filename}"
+    file_path = os.path.join(UPLOAD_DIR, filename)
+    static_path = os.path.join(STATIC_DIR, filename)
+
+    # Guardar en uploads
+    content = await file.read()
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
+
+    # Copiar a static para servirlo públicamente
+    with open(static_path, "wb") as buffer:
+        buffer.write(content)
+
+    # URL pública
+    file_url = f"http://localhost:8000/static/pdfs/{filename}"
+
+    return {"file_url": file_url}
 
 @app.get("/usuarios_contraloria", tags=["Usuario"])
 def contraloria_users():
@@ -624,7 +680,7 @@ def read_unidades(db: Session = Depends(get_db)):
         )
 
 @app.get(
-    "unidades_responsables/{unidad_id}",
+    "/unidades_responsables/{unidad_id}",
     response_model=UnidadResponsableResponse,
     tags=["Unidades Responsables"]
 )
@@ -638,7 +694,7 @@ def get_unidad(
     return db_unidad
 
 @app.put(
-    "unidades_responsables/{unidad_id}/asignar-responsable",
+    "/unidades_responsables/{unidad_id}/asignar-responsable",
     tags=["Unidades Responsables"]
 )
 def asignar_responsable(
@@ -652,16 +708,19 @@ def asignar_responsable(
         raise HTTPException(status_code=404, detail="Unidad no encontrada")
     
     # Verificar que existe el usuario
-    db_usuario = db.query(User).filter(User.id_usuario == usuario_id).first()
+    db_usuario = db.query(User).filter(User.id_usuario == usuario_id, User.is_deleted == False).first()
     if not db_usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     # Asignar responsable
-    db_unidad.responsable_id = usuario_id  # Usa el nombre correcto del campo FK en tu modelo
+    db_unidad.responsable = db_usuario  # Usa el nombre correcto del campo FK en tu modelo
     db.commit()
     db.refresh(db_unidad)
     
     return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
+
+
+
 
 # endpoints para las actas entregarecepcion
 
@@ -749,19 +808,38 @@ def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
     return db_acta
 
 # endpoints para anexos #############################################################################################
-@app.get("/anexos/", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
+@app.get("/anexos", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
 def read_anexos(
-    skip: int = Query(0, ge=0, description="Número de registros a saltar"),
-    limit: int = Query(1000, le=1000, description="Número máximo de registros a devolver"),
+    skip: int = 0,
+    limit: int = 1000,
     db: Session = Depends(get_db)
 ):
     try:
-        anexos = db.query(Anexos).filter(Anexos.is_deleted == False).limit(limit).all()
+        anexos = db.query(Anexos).filter(Anexos.is_deleted == False).offset(skip).limit(limit).all()
         if not anexos:
             return []
         return anexos
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
+    
+# add by POST
+@app.post("/anexos", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
+    
+    db_anexo = Anexos(clave=anexo.clave,
+        creador_id=anexo.creador_id,
+        datos=anexo.datos,
+        estado=anexo.estado,
+        unidad_responsable_id=anexo.unidad_responsable_id,
+        fecha_creacion=anexo.fecha_creacion or datetime.utcnow(),
+        creado_en=date.today(),
+        actualizado_en=date.today(),
+        is_deleted=False)
+    
+    db.add(db_anexo)
+    db.commit()
+    db.refresh(db_anexo)
+    return db_anexo
     
 # get by id
 @app.get("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
@@ -771,11 +849,6 @@ def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
     return db_anexo
 
-# add by POST
-@app.post("/anexos/", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
-    db_anexo = Anexos(**anexo.dict())
-    db.add(db_anexo)
-    db.commit()
-    db.refresh(db_anexo)
-    return db_anexo
+
+
+# upload pdf 
