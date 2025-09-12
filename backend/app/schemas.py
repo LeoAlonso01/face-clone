@@ -2,11 +2,11 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date, time
-from sqlalchemy import Enum
-from enum import Enum
+from sqlalchemy import Enum as PythonEnum
+from enum import Enum as SQLEnum
 
 
-class UserRoles(str, Enum):
+class UserRoles(str, SQLEnum):
     USER = "USER"
     ADMIN = "ADMIN"
     AUDITOR = "AUDITOR"
@@ -18,7 +18,8 @@ class UserBase(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     role: Optional[UserRoles] = None
-    
+    reset_token: Optional[str] = None
+    reset_token_expiration: Optional[datetime] = None
 
 
 
@@ -42,6 +43,8 @@ class UserDB(UserBase):
             "is_deleted": self.is_deleted
         }
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
 
 class UnidadResponsableSimple(BaseModel):
     id_unidad: int
@@ -57,6 +60,9 @@ class UserResponse(UserBase):
     email: str
     role: Optional[str] = None  # Ahora es opcional sin valor por defecto
     is_deleted: bool
+    reset_token: Optional[str] = None
+    reset_token_expiration: Optional[datetime] = None
+    # incluir la unidad responsable si existe
     unidad_responsable: Optional[UnidadResponsableSimple] = None
 
     class Config:

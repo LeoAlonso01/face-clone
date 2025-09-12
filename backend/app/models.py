@@ -9,6 +9,9 @@ from sqlalchemy import Boolean
 from enum import Enum as PyEnum
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
+from sqlalchemy.ext.declarative import declarative_base
+
+BaseModel = declarative_base()
 
 def utcnow():
     return datetime.now() 
@@ -48,7 +51,7 @@ class UserUpdate(BaseModel):
     class Config:
         orm_mode = True
 
-class User(Base):
+class User(BaseModel):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -60,8 +63,11 @@ class User(Base):
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     posts = relationship("Post", back_populates="owner")
-    
+    # relaciones
     unidad = relationship("UnidadResponsable", back_populates="usuario_responsable", uselist=False)
+    # recuperacion de contraseña
+    reset_token = Column(String, nullable=True)
+    reset_token_expiration = Column(DateTime, nullable=True)
 
 class Post(Base):
     __tablename__ = "posts"
@@ -75,7 +81,7 @@ class Post(Base):
 
 # This is the model for Unidad Responsable
 # It represents a responsible unit in the system, such as a department or office.
-class UnidadResponsable(Base):
+class UnidadResponsable(BaseModel):
     __tablename__ = "unidades_responsables"
 
     id_unidad = Column(Integer, primary_key=True, index=True)
@@ -110,7 +116,7 @@ class UnidadResponsable(Base):
 
 
 # esquema para el acta entrega-recepción
-class ActaEntregaRecepcion(Base):
+class ActaEntregaRecepcion(BaseModel):
     __tablename__ = "acta_entrega_recepcion"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -146,7 +152,7 @@ class ActaEntregaRecepcion(Base):
     # relacion con unidades responsables
     unidad = relationship("UnidadResponsable", back_populates="actas")
 
-class Anexos(Base):
+class Anexos(BaseModel):
     __tablename__ = "anexos"
 
     id = Column(Integer, primary_key=True, index=True)

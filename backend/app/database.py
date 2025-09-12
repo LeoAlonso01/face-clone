@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     POSTGRES_DB: str
     POSTGRES_HOST: str
     POSTGRES_PORT: str
-
     class Config:
         env_file = ".env"
 

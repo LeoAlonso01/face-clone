@@ -1,4 +1,6 @@
-from fastapi import FastAPI, HTTPException, Depends, status, Body, Query 
+import secrets
+import string
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status, Body, Query 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .database import Base, engine
 from typing import List
@@ -11,6 +13,7 @@ import logging
 from .auth import (
     authenticate_user,
     create_access_token,
+    enviar_email_recuperacion,
     get_current_user,
     get_password_hash,
     verify_password,
@@ -19,7 +22,7 @@ from .auth import (
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import Anexos, User, UserRoles, UserCreate, UserResponse, UnidadResponsable
-from .schemas import ActaResponse, ActaCreate, ActaWithUnidadResponse, ActaUpdate
+from .schemas import ActaResponse, ActaCreate, ActaWithUnidadResponse, ActaUpdate, ForgotPasswordRequest
 from .models import ActaEntregaRecepcion
 from .schemas import AnexoCreate, AnexoResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
@@ -109,6 +112,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+# generacion token seguro
+def generar_token_seguro(length: int = 32 ) -> str:
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
 
 app.mount("/static", StaticFiles(directory="/app/static"), name="static")
 
@@ -305,6 +313,49 @@ def change_password(
 
         setattr(user, "password", get_password_hash(new_password))
         return {"message": "Contraseña actualizada exitosamente"}
+
+@app.post("/forgot-password", tags=["Usuario"])
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    # buscar usuario por email
+     # Buscar usuario por email
+    user = db.query(User).filter(User.email == request.email, User.is_deleted == False).first()
+
+    # Si no existe, no revelamos información (seguridad)
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="Si el email está registrado, recibirás instrucciones para recuperar tu contraseña."
+        )
+
+    # Generar token y expiración (15 minutos)
+    token = generar_token_seguro()
+    expires_at = datetime.utcnow() + timedelta(minutes=15)
+
+    # Guardar en la base de datos
+    user.reset_token = token
+    user.reset_expires = expires_at
+    db.commit()
+
+    # Enviar correo en segundo plano (mañana lo activamos)
+    try:
+        background_tasks.add_task(
+            enviar_email_recuperacion,
+            destinatario=user.email,
+            nombre_usuario=user.username,
+            token=token
+        )
+    except Exception as e:
+        print(f"[WARN] No se pudo programar el envío de correo: {e}")
+        # No detenemos el flujo
+
+    return {
+        "message": "Si el email está registrado, recibirás instrucciones para recuperar tu contraseña."
+    }
+    
 
 # Agrega este endpoint temporal para diagnóstico
 @app.get("/debug/unidad-estructura")
