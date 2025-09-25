@@ -178,7 +178,6 @@ class AnexoBase(BaseModel):
 # esquema para crear un anexo###################################################################################
 
 # Schema para crear actas (POST)
-# Schema base para Acta (sin relaciones)
 class ActaCreate(BaseModel):
     unidad_responsable: int = Field(..., description="ID de la unidad responsable")
     folio: str = Field(..., description="Número de folio del acta")
@@ -187,28 +186,28 @@ class ActaCreate(BaseModel):
     comisionado: str = Field(..., description="Nombre del comisionado")
     oficio_comision: Optional[str] = Field(None, description="Número de oficio de comisión")
     fecha_oficio_comision: Optional[str] = Field(None, description="Fecha del oficio de comisión")
-    entrante: Optional[str] = Field(None, description="Nombre de la persona entrante")
-    ine_entrante: Optional[str] = Field(None, description="INE de la persona entrante")
-    fecha_inicio_labores: Optional[str] = Field(None, description="Fecha de inicio de labores")
-    nombramiento: Optional[str] = Field(None, description="Tipo de nombramiento")
-    fecha_nombramiento: Optional[str] = Field(None, description="Fecha del nombramiento")
-    asignacion: Optional[str] = Field(None, description="Tipo de asignación")
-    asignado_por: Optional[str] = Field(None, description="Quién realiza la asignación")
-    domicilio_entrante: Optional[str] = Field(None, description="Domicilio de la persona entrante")
-    telefono_entrante: Optional[str] = Field(None, description="Teléfono de la persona entrante")
-    saliente: Optional[str] = Field(None, description="Nombre de la persona saliente")
-    fecha_fin_labores: Optional[str] = Field(None, description="Fecha de fin de labores")
-    testigo_entrante: Optional[str] = Field(None, description="Nombre del testigo entrante")
-    ine_testigo_entrante: Optional[str] = Field(None, description="INE del testigo entrante")
-    testigo_saliente: Optional[str] = Field(None, description="Nombre del testigo saliente")
-    ine_testigo_saliente: Optional[str] = Field(None, description="INE del testigo saliente")
-    fecha_cierre_acta: Optional[str] = Field(None, description="Fecha de cierre del acta")
-    hora_cierre_acta: Optional[str] = Field(None, description="Hora de cierre del acta")
-    observaciones: Optional[str] = Field(None, description="Observaciones adicionales")
-    estado: Optional[str] = Field("Pendiente", description="Estado del acta")
+    entrante: Optional[str] = None
+    ine_entrante: Optional[str] = None
+    fecha_inicio_labores: Optional[str] = None
+    nombramiento: Optional[str] = None
+    fecha_nombramiento: Optional[str] = None
+    asignacion: Optional[str] = None
+    asignado_por: Optional[str] = None
+    domicilio_entrante: Optional[str] = None
+    telefono_entrante: Optional[str] = None
+    saliente: Optional[str] = Field(..., description="Nombre de la persona saliente")
+    fecha_fin_labores: Optional[str] = None
+    testigo_entrante: Optional[str] = None
+    ine_testigo_entrante: Optional[str] = None
+    testigo_saliente: Optional[str] = None
+    ine_testigo_saliente: Optional[str] = None
+    fecha_cierre_acta: Optional[str] = None
+    hora_cierre_acta: Optional[str] = None
+    observaciones: Optional[str] = None
+    estado: Optional[str] = "Pendiente"
 
-class ActaCreate(BaseModel):
-    pass
+    model_config = ConfigDict(from_attributes=True)  # ✅ Pydantic v2
+
 
 # Schema para respuesta básica de Acta
 class ActaResponse(BaseModel):
@@ -239,22 +238,21 @@ class ActaResponse(BaseModel):
     hora_cierre_acta: Optional[str]
     observaciones: Optional[str]
     estado: Optional[str]
-    # Hacer estos campos opcionales temporalmente
     creado_en: Optional[datetime] = None
     actualizado_en: Optional[datetime] = None
 
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
 
-# Schema para respuesta con datos de unidad
+# Schema con datos de unidad
 class ActaWithUnidadResponse(ActaResponse):
     unidad_nombre: Optional[str] = None
     unidad_descripcion: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
+
+# Schema para actualización
 class ActaUpdate(BaseModel):
     unidad_responsable: Optional[int] = None
     folio: Optional[str] = None
@@ -282,10 +280,10 @@ class ActaUpdate(BaseModel):
     hora_cierre_acta: Optional[str] = None
     observaciones: Optional[str] = None
     estado: Optional[str] = None
-    # Hacer estos campos opcionales temporalmente
     creado_en: Optional[datetime] = None
     actualizado_en: Optional[datetime] = None
 
+    model_config = ConfigDict(from_attributes=True)
 ################################################################3
 ################### Anexo 
 class AnexoBase(BaseModel):
