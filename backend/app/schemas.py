@@ -65,6 +65,8 @@ class UserResponse(UserBase):
     # incluir la unidad responsable si existe
     unidad_responsable: Optional[UnidadResponsableSimple] = None
 
+    __allow_unmapped_fields__ = True
+
     class Config:
         orm_mode = True
 

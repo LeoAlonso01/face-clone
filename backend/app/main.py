@@ -21,8 +21,8 @@ from .auth import (
     
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-from .models import Anexos, User, UserRoles, UserCreate, UserResponse, UnidadResponsable
-from .schemas import ActaResponse, ActaCreate, ActaWithUnidadResponse, ActaUpdate, ForgotPasswordRequest
+from .models import Anexos, User, UserRoles, UnidadResponsable
+from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, UserResponse, AnexoUpdate
 from .models import ActaEntregaRecepcion
 from .schemas import AnexoCreate, AnexoResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
@@ -147,7 +147,7 @@ async def upload_pdf(file: UploadFile = File(...)):
     # URL pública
     file_url = f"http://localhost:8000/static/pdfs/{filename}"
 
-    return {"file_url": file_url}
+    return {"url": file_url}
 
 @app.get("/usuarios_contraloria", tags=["Usuario"])
 def contraloria_users():
@@ -900,6 +900,61 @@ def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
     return db_anexo
 
+# para actualizar un anexos existente
+@app.put("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db)):
+    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
+    if not db_anexo:
+        raise HTTPException(status_code=404, detail="Anexo no encontrado")
+
+    # Actualizar campos
+    for key, value in anexo.model_dump(exclude_unset=True).items():
+        setattr(db_anexo, key, value)
+
+    db_anexo.actualizado_en = date.today()
+    db.commit()
+    db.refresh(db_anexo)
+    return db_anexo
 
 
-# upload pdf 
+# marcar un anexo como eliminado
+@app.delete("/anexos/{anexo_id}", tags=["Anexos de Entrega Recepción"])
+def delete_anexo(anexo_id: int, db: Session = Depends(get_db)):
+    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
+    if not db_anexo:
+        raise HTTPException(status_code=404, detail="Anexo no encontrado")
+
+    db_anexo.is_deleted = True
+    db_anexo.actualizado_en = date.today()
+    db.commit()
+    return {"message": "Anexo eliminado correctamente"}
+
+# endpont para obtener anexos por clave
+@app.get("/anexos/clave/{clave}", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
+def read_anexos_by_clave(clave: str, db: Session = Depends(get_db)):
+    try:
+        anexos = db.query(Anexos).filter(
+            Anexos.clave == clave,
+            Anexos.is_deleted == False
+        ).all()
+        if not anexos:
+            return []
+        return anexos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al consultar anexos por clave: {str(e)}")
+    
+    # anexo por estado
+@app.get("/anexos/estado/{estado}", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
+def read_anexos_by_estado(estado: str, db: Session = Depends(get_db)):
+    try:
+        anexos = db.query(Anexos).filter(
+            Anexos.estado == estado,
+            Anexos.is_deleted == False
+        ).all()
+        if not anexos:
+            return []
+        return anexos
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al consultar anexos por estado: {str(e)}")
+    
+# 
