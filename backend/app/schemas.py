@@ -207,9 +207,6 @@ class ActaCreate(BaseModel):
     observaciones: Optional[str] = Field(None, description="Observaciones adicionales")
     estado: Optional[str] = Field("Pendiente", description="Estado del acta")
 
-class ActaCreate(BaseModel):
-    pass
-
 # Schema para respuesta básica de Acta
 class ActaResponse(BaseModel):
     id: int
