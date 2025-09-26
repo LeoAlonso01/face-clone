@@ -21,7 +21,7 @@ class UserRoles(PyEnum):
     ADMIN = "ADMIN"
     AUDITOR = "AUDITOR"
 
-class UserResponse(BaseModel):
+""" class UserResponse(BaseModel):
     id: int
     username: str
     email: str
@@ -49,7 +49,7 @@ class UserUpdate(BaseModel):
     is_deleted: bool | None = None
 
     class Config:
-        orm_mode = True
+        orm_mode = True """
 
 class User(BaseModel):
     __tablename__ = "users"
