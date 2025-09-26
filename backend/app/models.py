@@ -62,22 +62,12 @@ class User(BaseModel):
     updated_at = Column(DateTime, default=DateTime, onupdate=DateTime)
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
-    posts = relationship("Post", back_populates="owner")
     # relaciones
     unidad = relationship("UnidadResponsable", back_populates="usuario_responsable", uselist=False)
     # recuperacion de contraseña
     reset_token = Column(String, nullable=True)
     reset_token_expiration = Column(DateTime, nullable=True)
 
-class Post(Base):
-    __tablename__ = "posts"
-
-    id = Column(Integer, primary_key=True, index=True)
-    content = Column(Text)
-    owner_id = Column(Integer, ForeignKey("users.id"))
-    created_at = Column(DateTime)
-
-    owner = relationship("User", back_populates="posts")
 
 # This is the model for Unidad Responsable
 # It represents a responsible unit in the system, such as a department or office.
