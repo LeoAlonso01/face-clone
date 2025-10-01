@@ -825,7 +825,7 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db)):
             )
         
         # Crear nueva acta
-        db_acta = ActaEntregaRecepcion(**acta.dict())
+        db_acta = ActaEntregaRecepcion(**acta.model_dump(exclude_unset=True))
         db.add(db_acta)
         db.commit()
         db.refresh(db_acta)
@@ -857,6 +857,24 @@ def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_acta)
     return db_acta
+
+
+@app.delete("/actas/{acta_id}", tags=["Actas de Entrega Recepción"])
+def delete_acta(acta_id: int, db: Session = Depends(get_db)):
+    db_acta = db.query(ActaEntregaRecepcion).filter(
+        ActaEntregaRecepcion.id == acta_id
+    ).first()
+    
+    if not db_acta:
+        raise HTTPException(status_code=404, detail="Acta no encontrada")
+    
+    # Opción 1: Eliminación real
+    db.delete(db_acta)
+    db.commit()
+    return {"message": "Acta eliminada correctamente"}
+
+# actas con anexos por unidad responsable y por creador 
+
 
 # endpoints para anexos #############################################################################################
 @app.get("/anexos", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
