@@ -702,7 +702,7 @@ def read_unidades(
          tags=["Unidades Responsables"])
 def read_unidades(db: Session = Depends(get_db)):
     try:
-        # Usamos joinedload para cargar la relación en la misma consulta
+        # Carga la unidad + usuario_responsable + anexos
         query = db.query(UnidadResponsable).options(
             joinedload(UnidadResponsable.usuario_responsable)
         )
@@ -776,17 +776,24 @@ def asignar_responsable(
 # endpoints para las actas entregarecepcion
 
 @app.get("/actas", response_model=List[ActaResponse], tags=["Actas de Entrega Recepción"])
-def read_actas(skip: int = 0, limit = 1000, db: Session = Depends(get_db)):
-    """
-    Obtener Actas sin datos de unidad pero si no hay un arreglo vacio
-    """
+def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
     try:
-        actas = db.query(ActaEntregaRecepcion).offset(skip).limit(limit).all()
+        actas = (
+            db.query(ActaEntregaRecepcion)
+            .options(
+                selectinload(ActaEntregaRecepcion.unidad)
+                .selectinload(UnidadResponsable.anexos)
+            )
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         if not actas:
             return []
         return actas
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
+        print(f"Error detallado en /actas: {type(e).__name__}: {e}")  # Log clave
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 @app.get("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
@@ -975,4 +982,5 @@ def read_anexos_by_estado(estado: str, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar anexos por estado: {str(e)}")
     
-# 
+# Join de anexos por actas
+
