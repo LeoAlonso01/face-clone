@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     POSTGRES_USER: str
@@ -9,10 +9,14 @@ class Settings(BaseSettings):
     POSTGRES_DB: str
     POSTGRES_HOST: str
     POSTGRES_PORT: str
-    class Config:
-        env_file = ".env"
 
-settings = Settings()
+    model_config = SettingsConfigDict(env_file=".env")
+
+# Crea una instancia solo si es necesario (opcional)
+try:
+    settings = Settings()
+except Exception as e:
+    raise RuntimeError(f"Error cargando variables de entorno: {e}")
 
 DATABASE_URL = f"postgresql://{settings.POSTGRES_USER}:{settings.POSTGRES_PASSWORD}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
 

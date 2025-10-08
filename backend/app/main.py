@@ -708,7 +708,7 @@ def read_unidades(
          tags=["Unidades Responsables"])
 def read_unidades(db: Session = Depends(get_db)):
     try:
-        # Usamos joinedload para cargar la relación en la misma consulta
+        # Carga la unidad + usuario_responsable + anexos
         query = db.query(UnidadResponsable).options(
             joinedload(UnidadResponsable.usuario_responsable)
         )
@@ -782,17 +782,24 @@ def asignar_responsable(
 # endpoints para las actas entregarecepcion
 
 @app.get("/actas", response_model=List[ActaResponse], tags=["Actas de Entrega Recepción"])
-def read_actas(skip: int = 0, limit = 1000, db: Session = Depends(get_db)):
-    """
-    Obtener Actas sin datos de unidad pero si no hay un arreglo vacio
-    """
+def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
     try:
-        actas = db.query(ActaEntregaRecepcion).offset(skip).limit(limit).all()
+        actas = (
+            db.query(ActaEntregaRecepcion)
+            .options(
+                selectinload(ActaEntregaRecepcion.unidad)
+                .selectinload(UnidadResponsable.anexos)
+            )
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
         if not actas:
             return []
         return actas
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
+        print(f"Error detallado en /actas: {type(e).__name__}: {e}")  # Log clave
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 @app.get("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
@@ -831,7 +838,7 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db)):
             )
         
         # Crear nueva acta
-        db_acta = ActaEntregaRecepcion(**acta.dict())
+        db_acta = ActaEntregaRecepcion(**acta.model_dump(exclude_unset=True))
         db.add(db_acta)
         db.commit()
         db.refresh(db_acta)
@@ -863,6 +870,24 @@ def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_acta)
     return db_acta
+
+
+@app.delete("/actas/{acta_id}", tags=["Actas de Entrega Recepción"])
+def delete_acta(acta_id: int, db: Session = Depends(get_db)):
+    db_acta = db.query(ActaEntregaRecepcion).filter(
+        ActaEntregaRecepcion.id == acta_id
+    ).first()
+    
+    if not db_acta:
+        raise HTTPException(status_code=404, detail="Acta no encontrada")
+    
+    # Opción 1: Eliminación real
+    db.delete(db_acta)
+    db.commit()
+    return {"message": "Acta eliminada correctamente"}
+
+# actas con anexos por unidad responsable y por creador 
+
 
 # endpoints para anexos #############################################################################################
 @app.get("/anexos", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
@@ -906,61 +931,6 @@ def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
     return db_anexo
 
-# para actualizar un anexos existente
-@app.put("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db)):
-    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
-    if not db_anexo:
-        raise HTTPException(status_code=404, detail="Anexo no encontrado")
-
-    # Actualizar campos
-    for key, value in anexo.model_dump(exclude_unset=True).items():
-        setattr(db_anexo, key, value)
-
-    db_anexo.actualizado_en = date.today()
-    db.commit()
-    db.refresh(db_anexo)
-    return db_anexo
 
 
-# marcar un anexo como eliminado
-@app.delete("/anexos/{anexo_id}", tags=["Anexos de Entrega Recepción"])
-def delete_anexo(anexo_id: int, db: Session = Depends(get_db)):
-    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
-    if not db_anexo:
-        raise HTTPException(status_code=404, detail="Anexo no encontrado")
-
-    db_anexo.is_deleted = True
-    db_anexo.actualizado_en = date.today()
-    db.commit()
-    return {"message": "Anexo eliminado correctamente"}
-
-# endpont para obtener anexos por clave
-@app.get("/anexos/clave/{clave}", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
-def read_anexos_by_clave(clave: str, db: Session = Depends(get_db)):
-    try:
-        anexos = db.query(Anexos).filter(
-            Anexos.clave == clave,
-            Anexos.is_deleted == False
-        ).all()
-        if not anexos:
-            return []
-        return anexos
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al consultar anexos por clave: {str(e)}")
-    
-    # anexo por estado
-@app.get("/anexos/estado/{estado}", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
-def read_anexos_by_estado(estado: str, db: Session = Depends(get_db)):
-    try:
-        anexos = db.query(Anexos).filter(
-            Anexos.estado == estado,
-            Anexos.is_deleted == False
-        ).all()
-        if not anexos:
-            return []
-        return anexos
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al consultar anexos por estado: {str(e)}")
-    
-# 
+# upload pdf 
