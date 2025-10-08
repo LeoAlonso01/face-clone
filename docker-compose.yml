@@ -7,6 +7,8 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./backend/uploads:/app/uploads
+      - ./backend/static:/app/static
     environment:
       - APP_ENV=development
     depends_on:

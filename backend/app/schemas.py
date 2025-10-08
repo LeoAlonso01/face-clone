@@ -1,12 +1,12 @@
 # schemas.py
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime, date, time
-from sqlalchemy import Enum
-from enum import Enum
+from sqlalchemy import Enum as PythonEnum
+from enum import Enum as SQLEnum
 
 
-class UserRoles(str, Enum):
+class UserRoles(str, SQLEnum):
     USER = "USER"
     ADMIN = "ADMIN"
     AUDITOR = "AUDITOR"
@@ -18,7 +18,8 @@ class UserBase(BaseModel):
     username: Optional[str] = None
     email: Optional[str] = None
     role: Optional[UserRoles] = None
-    
+    reset_token: Optional[str] = None
+    reset_token_expiration: Optional[datetime] = None
 
 
 
@@ -42,6 +43,8 @@ class UserDB(UserBase):
             "is_deleted": self.is_deleted
         }
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
 
 class UnidadResponsableSimple(BaseModel):
     id_unidad: int
@@ -57,7 +60,12 @@ class UserResponse(UserBase):
     email: str
     role: Optional[str] = None  # Ahora es opcional sin valor por defecto
     is_deleted: bool
+    reset_token: Optional[str] = None
+    reset_token_expiration: Optional[datetime] = None
+    # incluir la unidad responsable si existe
     unidad_responsable: Optional[UnidadResponsableSimple] = None
+
+    __allow_unmapped_fields__ = True
 
     class Config:
         orm_mode = True
@@ -278,43 +286,39 @@ class ActaUpdate(BaseModel):
     creado_en: Optional[datetime] = None
     actualizado_en: Optional[datetime] = None
 
-class AnexoCreate(AnexoBase):
-    clave:str
-    creador_id: int
-    datos: dict | None = None
-    estado: str | None = None
-    unidad_responsable_id: int | None = None
-    
-class AnexoResponse(AnexoBase):
-
-    id: int
+################################################################3
+################### Anexo 
+class AnexoBase(BaseModel):
     clave: str
-    fecha_creacion: datetime
-    datos: dict
-    creado_en: date
-    actualizado_en: date
-    unidad_responsable_id: int
-    estado: str
-
-    class Config:
-        orm_mode = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None,
-            dict: lambda v: v if isinstance(v, dict) else None
-        }
-
-class AnexoUpdate(AnexoBase):
-    clave: Optional[str]
-    creador_id: Optional[int] = None
-    datos: Optional[dict] = None
+    creador_id: int
+    datos: List[Dict[str, Any]]
     estado: Optional[str] = None
     unidad_responsable_id: Optional[int] = None
+    fecha_creacion: Optional[datetime] = None
+
+class AnexoCreate(AnexoBase):
+    clave: str
+    creador_id: int
+    datos: List[Dict[str, Any]]  # ← Cambiado a List
+    estado: str = "Borrador"  # valor por defecto
+    unidad_responsable_id: int
+
+class AnexoUpdate(AnexoBase):
+    clave: Optional[str] = None
+    creador_id: Optional[int] = None
+    datos: Optional[List[Dict[str, Any]]] = None
+    estado: Optional[str] = None
+    unidad_responsable_id: Optional[int] = None
+    fecha_creacion: Optional[datetime] = None
+
+class AnexoResponse(AnexoBase):
+    id:int 
+    creado_en: date
+    actualizado_en: date
 
     class Config:
-        json_encoders = {
+        from_attributes = True
+        json_encoders= {
             datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None
+            date: lambda v: v.isoformat() if v else None,
         }
-        orm_mode = True
-        

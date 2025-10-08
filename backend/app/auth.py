@@ -7,6 +7,8 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session, joinedload
 from .database import get_db
 from .models import User, UserRoles
+import os
+
 
 # Configuración de seguridad
 SECRET_KEY = "tu_clave_secreta"  # Cambia esto por una clave segura en producción
@@ -71,3 +73,12 @@ def get_admin_user(current_user: User = Depends(get_current_user)):
             detail="Solo los administradores pueden realizar esta acción"
         )
     return current_user
+
+# services/email_service.py
+def enviar_email_recuperacion(destinatario: str, nombre_usuario: str, token: str):
+    # 🔜 Aquí integraremos Resend, Gmail, etc.
+    # Por ahora, solo registramos
+    print(f"📧 [Simulado] Enviando correo a {destinatario}")
+    print(f"Hola {nombre_usuario}, usa este token: {token}")
+    print(f"Enlace: http://localhost:3000/reset-password?token={token}")
+    print("⚠️ Este es un entorno de desarrollo. No se envió ningún correo real.")
