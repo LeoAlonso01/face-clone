@@ -98,12 +98,6 @@ app = FastAPI(lifespan=lifespan)
 origins = [
     "http://localhost",
     "http://localhost:5173",  # Asumiendo que tu front corre aquí
-<<<<<<< HEAD
-    "http://148.216.111.144",
-    "http://localhost:3000", # Si tienes otro puerto o dominio para el front
-    "192.168.0.124:3000",
-=======
->>>>>>> 6c6851e69f7d891e22c90dc30bf8c50e7517fbbd
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
     "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/",
     "https://entrega-recepcion-git-91bd1d-utm221001tim-ut-moreliaes-projects.vercel.app/"
