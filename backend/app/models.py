@@ -62,7 +62,6 @@ class User(BaseModel):
     updated_at = Column(DateTime, default=DateTime, onupdate=DateTime)
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
-    posts = relationship("Post", back_populates="owner")
     # relaciones
     unidad = relationship("UnidadResponsable", back_populates="usuario_responsable", uselist=False)
     # recuperacion de contraseña
