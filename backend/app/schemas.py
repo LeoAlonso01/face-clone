@@ -112,6 +112,27 @@ class UnidadResponsableUpdate(UnidadResponsableBase):
     pass
 
 # Esquema para respuesta de Unidad Responsable
+class AnexoResponse(BaseModel):
+    id: int
+    clave: int | None
+    creador_id: int | None
+    fecha_creacion: datetime | None
+    datos: dict | None
+    estado: str | None
+    unidad_responsable_id: int | None
+    creado_en: datetime
+    actualizado_en: datetime
+    is_deleted: bool = False  # Soft delete
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None,
+            date: lambda v: v.isoformat() if v else None,
+            dict: lambda v: v if isinstance(v, dict) else None
+        }
+        orm_mode = True
+
 class UnidadResponsableResponse(BaseModel):
     id_unidad: int
     nombre: str
@@ -127,7 +148,7 @@ class UnidadResponsableResponse(BaseModel):
     fecha_cambio: Optional[datetime] = None
     responsable: Optional[UserBase] = None  # Asegúrate que UserBase esté bien definido
     dependientes: List[UnidadResponsableBase] = Field(default_factory=list)  # Usa Field para listas
-
+    
     class Config:
         orm_mode = True
         json_encoders = {
@@ -155,14 +176,14 @@ class UnidadJerarquicaResponse(BaseModel):
 # Esquema para Anexo
 class AnexoBase(BaseModel):
     id: int
-    clave: int | None
+    clave: str
     creador_id: int | None
     fecha_creacion: datetime | None
-    datos: dict | None
-    estado: str | None
-    unidad_responsable_id: int | None
-    creado_en: datetime
-    actualizado_en: datetime
+    datos: List[Dict[str, Any]] 
+    estado: Optional[str] = None
+    unidad_responsable_id: Optional[int] = None
+    creado_en: Optional[datetime] = None
+    actualizado_en: Optional[datetime] = None
     is_deleted: bool = False  # Soft delete
 
     class Config:
@@ -173,6 +194,12 @@ class AnexoBase(BaseModel):
             dict: lambda v: v if isinstance(v, dict) else None
         }
         orm_mode = True
+
+class AnexoCreate(AnexoBase):
+    pass
+
+class AnexoUpdate(AnexoBase):
+    pass
 
 # schema para acta entrega recepcion
 # esquema para crear un anexo###################################################################################
@@ -206,9 +233,6 @@ class ActaCreate(BaseModel):
     hora_cierre_acta: Optional[str] = Field(None, description="Hora de cierre del acta")
     observaciones: Optional[str] = Field(None, description="Observaciones adicionales")
     estado: Optional[str] = Field("Pendiente", description="Estado del acta")
-
-class ActaCreate(BaseModel):
-    pass
 
 # Schema para respuesta básica de Acta
 class ActaResponse(BaseModel):

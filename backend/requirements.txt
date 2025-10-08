@@ -1,12 +1,13 @@
 fastapi
 uvicorn
 sqlalchemy
-pydantic
+pydantic>=2.0
 pydantic-settings
 python-dotenv
 psycopg2-binary
-passlib
+passlib[bcrypt]
 python-jose[cryptography]
-bcrypt
 python-multipart
 
+# Fuerza una versión estable de bcrypt
+bcrypt==4.1.2

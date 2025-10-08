@@ -62,7 +62,7 @@ class User(BaseModel):
     updated_at = Column(DateTime, default=DateTime, onupdate=DateTime)
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
-    
+    posts = relationship("Post", back_populates="owner")
     # relaciones
     unidad = relationship("UnidadResponsable", back_populates="usuario_responsable", uselist=False)
     # recuperacion de contraseña
@@ -101,6 +101,9 @@ class UnidadResponsable(BaseModel):
         back_populates="unidad",
         lazy="joined")
     actas = relationship("ActaEntregaRecepcion", back_populates="unidad")
+
+    # 👉 RELACIÓN CON ANEXOS (esto es lo nuevo)
+    anexos = relationship("Anexos", back_populates="unidad_responsable")
 
     class Config:
         orm_mode = True
@@ -156,6 +159,9 @@ class Anexos(BaseModel):
     creado_en = Column(Date, default=date.today)
     actualizado_en = Column(Date, default=date.today, onupdate=date.today)
     is_deleted = Column(Boolean, default=False)  # Soft delete
+
+    # Relacion con Unidad Responsable
+    unidad_responsable = relationship("UnidadResponsable", back_populates="anexos")
 
 
 
