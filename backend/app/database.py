@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str
     POSTGRES_PORT: str
 
+    RESEND_API_KEY: str
+    FRONTEND_URL: str
+
     model_config = SettingsConfigDict(env_file=".env")
 
 # Crea una instancia solo si es necesario (opcional)

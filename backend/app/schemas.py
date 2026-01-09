@@ -76,6 +76,8 @@ class UserUpdate(BaseModel):
     email: Optional[str] = None
     password: Optional[str] = None
     role: Optional[UserRoles] = None
+    reset_token: Optional[str] = None
+    reset_token_expiration: Optional[datetime] = None
     
 
 # Esquema para Unidad Responsable
@@ -112,26 +114,7 @@ class UnidadResponsableUpdate(UnidadResponsableBase):
     pass
 
 # Esquema para respuesta de Unidad Responsable
-class AnexoResponse(BaseModel):
-    id: int
-    clave: int | None
-    creador_id: int | None
-    fecha_creacion: datetime | None
-    datos: dict | None
-    estado: str | None
-    unidad_responsable_id: int | None
-    creado_en: datetime
-    actualizado_en: datetime
-    is_deleted: bool = False  # Soft delete
 
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None,
-            dict: lambda v: v if isinstance(v, dict) else None
-        }
-        orm_mode = True
 
 class UnidadResponsableResponse(BaseModel):
     id_unidad: int
@@ -161,7 +144,7 @@ class ResponsableResumen(BaseModel):
     email: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class UnidadJerarquicaResponse(BaseModel):
     id_unidad: int
@@ -171,14 +154,14 @@ class UnidadJerarquicaResponse(BaseModel):
     responsable: Optional[ResponsableResumen]
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Esquema para Anexo
 class AnexoBase(BaseModel):
     id: int
     clave: str
-    creador_id: int | None
-    fecha_creacion: datetime | None
+    creador_id: Optional[int] = None
+    fecha_creacion: Optional[datetime] = None
     datos: List[Dict[str, Any]] 
     estado: Optional[str] = None
     unidad_responsable_id: Optional[int] = None
@@ -193,7 +176,7 @@ class AnexoBase(BaseModel):
             date: lambda v: v.isoformat() if v else None,
             dict: lambda v: v if isinstance(v, dict) else None
         }
-        orm_mode = True
+        from_attributes = True
 
 class AnexoCreate(AnexoBase):
     pass

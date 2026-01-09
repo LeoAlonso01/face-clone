@@ -11,3 +11,4 @@ python-multipart
 
 # Fuerza una versión estable de bcrypt
 bcrypt==4.1.2
+resend
