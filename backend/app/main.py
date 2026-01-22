@@ -120,10 +120,16 @@ def generar_token_seguro(length: int = 32 ) -> str:
 
 app.mount("/static", StaticFiles(directory="/app/static"), name="static")
 
+# =================================================================================================
+#                                           ROOT
+# =================================================================================================
 @app.get("/", tags=["Root"])
 def read_root():
     return {"message": "SERUMICH 2.0 API is running"}
 
+# =================================================================================================
+#                                           ARCHIVOS
+# =================================================================================================
 @app.post("/pdf", tags=["Archivos"])
 async def upload_pdf(file: UploadFile = File(...)):
     if file.content_type != "application/pdf":
@@ -149,6 +155,9 @@ async def upload_pdf(file: UploadFile = File(...)):
 
     return {"url": file_url}
 
+# =================================================================================================
+#                                           USUARIOS
+# =================================================================================================
 @app.get("/usuarios_contraloria", tags=["Usuario"])
 def contraloria_users():
     users = []
@@ -355,8 +364,10 @@ async def forgot_password(
     return {
         "message": "Si el email está registrado, recibirás instrucciones para recuperar tu contraseña."
     }
-    
 
+# =================================================================================================
+#                                           DEBUG
+# =================================================================================================
 # Agrega este endpoint temporal para diagnóstico
 @app.get("/debug/unidad-estructura")
 async def debug_unidad_estructura(db: Session = Depends(get_db)):
@@ -369,6 +380,9 @@ async def debug_unidad_estructura(db: Session = Depends(get_db)):
         "relaciones": [rel for rel in dir(unidad_ejemplo) if not rel.startswith('_')]
     }
 
+# =================================================================================================
+#                                   UNIDADES RESPONSABLES
+# =================================================================================================
 # endpont para obtener unidad por usuario
 @app.get("/unidad_por_usuario/{user_id}")
 def obtener_unidad_por_usuario(user_id:int, db: Session = Depends(get_db)):
@@ -771,18 +785,17 @@ def asignar_responsable(
     return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
 
 
-
-
-# endpoints para las actas entregarecepcion
-
+# =================================================================================================
+#                                   ACTAS DE ENTREGA RECEPCIÓN
+# =================================================================================================
 @app.get("/actas", response_model=List[ActaResponse], tags=["Actas de Entrega Recepción"])
 def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
     try:
         actas = (
             db.query(ActaEntregaRecepcion)
             .options(
-                selectinload(ActaEntregaRecepcion.unidad)
-                .selectinload(UnidadResponsable.anexos)
+                selectinload(ActaEntregaRecepcion.unidad),
+                selectinload(ActaEntregaRecepcion.anexos)
             )
             .offset(skip)
             .limit(limit)
@@ -798,7 +811,12 @@ def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
 
 @app.get("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
 def read_acta(acta_id: int, db: Session = Depends(get_db)):
-    db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
+    db_acta = (
+        db.query(ActaEntregaRecepcion)
+        .options(selectinload(ActaEntregaRecepcion.anexos))
+        .filter(ActaEntregaRecepcion.id == acta_id)
+        .first()
+    )
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
     return db_acta
@@ -859,7 +877,7 @@ def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
     db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
-    for key, value in acta.dict(exclude_unset=True).items():
+    for key, value in acta.model_dump(exclude_unset=True).items():
         setattr(db_acta, key, value)
     db.commit()
     db.refresh(db_acta)
@@ -880,10 +898,9 @@ def delete_acta(acta_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Acta eliminada correctamente"}
 
-# actas con anexos por unidad responsable y por creador 
-
-
-# endpoints para anexos #############################################################################################
+# =================================================================================================
+#                                   ANEXOS DE ENTREGA RECEPCIÓN
+# =================================================================================================
 @app.get("/anexos", response_model=List[AnexoResponse], tags=["Anexos de Entrega Recepción"])
 def read_anexos(
     skip: int = 0,

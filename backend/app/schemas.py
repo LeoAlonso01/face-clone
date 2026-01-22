@@ -11,6 +11,10 @@ class UserRoles(str, SQLEnum):
     ADMIN = "ADMIN"
     AUDITOR = "AUDITOR"
 
+# =================================================================================================
+#                                           USUARIOS
+# =================================================================================================
+
 # Esquema base para usuario
 class UserBase(BaseModel):
     # compatible con respnsable en unidadresponsable 
@@ -78,6 +82,10 @@ class UserUpdate(BaseModel):
     role: Optional[UserRoles] = None
     
 
+# =================================================================================================
+#                                     UNIDADES RESPONSABLES
+# =================================================================================================
+
 # Esquema para Unidad Responsable
 # Es una unidad responsable en el sistema, como un departamento u oficina.
 class UnidadResponsableBase(BaseModel):
@@ -114,7 +122,7 @@ class UnidadResponsableUpdate(UnidadResponsableBase):
 # Esquema para respuesta de Unidad Responsable
 class AnexoResponse(BaseModel):
     id: int
-    clave: int | None
+    clave: str | None
     creador_id: int | None
     fecha_creacion: datetime | None
     datos: dict | None
@@ -172,6 +180,10 @@ class UnidadJerarquicaResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+# =================================================================================================
+#                                ACTAS DE ENTREGA-RECEPCIÓN
+# =================================================================================================
 
 # Esquema para Anexo
 class AnexoBase(BaseModel):
@@ -266,7 +278,7 @@ class ActaResponse(BaseModel):
     # Hacer estos campos opcionales temporalmente
     creado_en: Optional[datetime] = None
     actualizado_en: Optional[datetime] = None
-
+    anexos: Optional[List[AnexoResponse]] = None  # ← Anexos relacionados
 
     class Config:
         from_attributes = True
@@ -309,16 +321,22 @@ class ActaUpdate(BaseModel):
     # Hacer estos campos opcionales temporalmente
     creado_en: Optional[datetime] = None
     actualizado_en: Optional[datetime] = None
+   
 
-################################################################3
+# =================================================================================================
+#                                           ANEXOS
+# =================================================================================================
+
 ################### Anexo 
 class AnexoBase(BaseModel):
+    id: Optional[int] = None
     clave: str
     creador_id: int
     datos: List[Dict[str, Any]]
     estado: Optional[str] = None
     unidad_responsable_id: Optional[int] = None
     fecha_creacion: Optional[datetime] = None
+    acta_id: Optional[int] = None   
 
 class AnexoCreate(AnexoBase):
     clave: str

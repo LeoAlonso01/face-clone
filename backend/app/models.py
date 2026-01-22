@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 
-BaseModel = declarative_base()
+Base = declarative_base()
 
 def utcnow():
     return datetime.now() 
@@ -51,7 +51,7 @@ class UserUpdate(BaseModel):
     class Config:
         orm_mode = True """
 
-class User(BaseModel):
+class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -71,7 +71,7 @@ class User(BaseModel):
 
 # This is the model for Unidad Responsable
 # It represents a responsible unit in the system, such as a department or office.
-class UnidadResponsable(BaseModel):
+class UnidadResponsable(Base):
     __tablename__ = "unidades_responsables"
 
     id_unidad = Column(Integer, primary_key=True, index=True)
@@ -109,7 +109,7 @@ class UnidadResponsable(BaseModel):
 
 
 # esquema para el acta entrega-recepción
-class ActaEntregaRecepcion(BaseModel):
+class ActaEntregaRecepcion(Base):
     __tablename__ = "acta_entrega_recepcion"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -141,11 +141,18 @@ class ActaEntregaRecepcion(BaseModel):
     estado = Column(String, nullable=True)
     creado_en = Column(DateTime, server_default=func.now())
     actualizado_en = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    # 👉 RELACIÓN CON ANEXOS (esto es lo nuevo)
+    anexos = relationship(
+        "Anexos", 
+        back_populates="acta", 
+        lazy="selectin", 
+        cascade="all, delete-orphan"
+        )  
 
     # relacion con unidades responsables
     unidad = relationship("UnidadResponsable", back_populates="actas")
 
-class Anexos(BaseModel):
+class Anexos(Base):             
     __tablename__ = "anexos"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -158,9 +165,12 @@ class Anexos(BaseModel):
     creado_en = Column(Date, default=date.today)
     actualizado_en = Column(Date, default=date.today, onupdate=date.today)
     is_deleted = Column(Boolean, default=False)  # Soft delete
-
     # Relacion con Unidad Responsable
     unidad_responsable = relationship("UnidadResponsable", back_populates="anexos")
+    
+    # Relación con Acta
+    acta_id = Column(Integer, ForeignKey("acta_entrega_recepcion.id"), nullable=True)
+    acta = relationship("ActaEntregaRecepcion", back_populates="anexos")
 
 
 
