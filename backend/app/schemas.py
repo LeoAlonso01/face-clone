@@ -1,6 +1,6 @@
 # schemas.py
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, date, time
 from sqlalchemy import Enum as PythonEnum
 from enum import Enum as SQLEnum
@@ -332,7 +332,7 @@ class AnexoBase(BaseModel):
     id: Optional[int] = None
     clave: str
     creador_id: int
-    datos: List[Dict[str, Any]]
+    datos: List[Dict[str, Any]]  # 👈 ¡Forzar lista!
     estado: Optional[str] = None
     unidad_responsable_id: Optional[int] = None
     fecha_creacion: Optional[datetime] = None

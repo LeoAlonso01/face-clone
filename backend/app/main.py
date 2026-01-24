@@ -96,6 +96,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 origins = [
+    "*",
     "http://localhost",
     "http://localhost:5173",  # Asumiendo que tu front corre aquí
     "http://localhost:3000", # Si tienes otro puerto o dominio para el front
@@ -803,7 +804,15 @@ def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
         )
         if not actas:
             return []
-        return actas
+            # 👇 Agrega esto para depurar
+        for i, acta in enumerate(actas):
+            print(f"\n--- Acta {i} ---")
+            for j, anexo in enumerate(acta.anexos):
+                print(f"Anexo {j} tipo: {type(anexo.datos)}")
+                print(f"Anexo {j} contenido: {anexo.datos}")
+        
+        return actas  # FastAPI intentará serializar esto
+        # return actas
     except Exception as e:
         print(f"Error detallado en /actas: {type(e).__name__}: {e}")  # Log clave
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
