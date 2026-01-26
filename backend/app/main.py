@@ -639,12 +639,12 @@ def actualizar_unidad(
         )
     
     # Verificar si el nuevo responsable existe (si se proporciona)
-    if unidad_actualizacion.responsable:
-        responsable = db.query(User).get(unidad_actualizacion.responsable)
+    if unidad_actualizacion.responsable_id is not None:
+        responsable = db.query(User).get(unidad_actualizacion.responsable_id)
         if not responsable:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No se encontró un usuario con ID {unidad_actualizacion.responsable}"
+                detail=f"No se encontró un usuario con ID {unidad_actualizacion.responsable_id}"
             )
     
     # Verificar si la nueva unidad padre existe (si se proporciona)
@@ -657,11 +657,26 @@ def actualizar_unidad(
             )
     
     # Actualizar los campos de la unidad
-    for key, value in unidad_actualizacion.model_dump(exclude_unset=True).items():
+    data = unidad_actualizacion.model_dump(exclude_unset=True)
+    if "responsable_id" in data:
+        db_unidad.responsable = data.pop("responsable_id")
+    for key, value in data.items():
         setattr(db_unidad, key, value)
     
     db.commit()
     db.refresh(db_unidad)
+    
+    # Preparar respuesta con responsable embebido
+    if db_unidad.usuario_responsable:
+        db_unidad.responsable = UserResponse(
+            id=db_unidad.usuario_responsable.id,
+            username=db_unidad.usuario_responsable.username,
+            email=db_unidad.usuario_responsable.email,
+            role=db_unidad.usuario_responsable.role,
+            is_deleted=db_unidad.usuario_responsable.is_deleted,
+        )
+    else:
+        db_unidad.responsable = None
     
     return db_unidad
 

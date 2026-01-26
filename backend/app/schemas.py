@@ -117,29 +117,10 @@ class UnidadResponsableCreate(UnidadResponsableBase):
 
 # Esquema para actualización de Unidad Responsable
 class UnidadResponsableUpdate(UnidadResponsableBase):
-    pass
+    responsable_id: Optional[int] = None
 
 # Esquema para respuesta de Unidad Responsable
-class AnexoResponse(BaseModel):
-    id: int
-    clave: str | None
-    creador_id: int | None
-    fecha_creacion: datetime | None
-    datos: dict | None
-    estado: str | None
-    unidad_responsable_id: int | None
-    creado_en: datetime
-    actualizado_en: datetime
-    is_deleted: bool = False  # Soft delete
-
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None,
-            dict: lambda v: v if isinstance(v, dict) else None
-        }
-        orm_mode = True
+# (AnexoResponse movido a la sección de ANEXOS)
 
 class UnidadResponsableResponse(BaseModel):
     id_unidad: int
@@ -182,36 +163,50 @@ class UnidadJerarquicaResponse(BaseModel):
         orm_mode = True
 
 # =================================================================================================
-#                                ACTAS DE ENTREGA-RECEPCIÓN
+#                                           ANEXOS
 # =================================================================================================
 
-# Esquema para Anexo
+################### Anexo 
 class AnexoBase(BaseModel):
-    id: int
+    id: Optional[int] = None
     clave: str
-    creador_id: int | None
-    fecha_creacion: datetime | None
-    datos: List[Dict[str, Any]] 
+    creador_id: int
+    datos: List[Dict[str, Any]]
     estado: Optional[str] = None
     unidad_responsable_id: Optional[int] = None
-    creado_en: Optional[datetime] = None
-    actualizado_en: Optional[datetime] = None
-    is_deleted: bool = False  # Soft delete
+    fecha_creacion: Optional[datetime] = None
+    acta_id: Optional[int] = None   
+
+class AnexoCreate(AnexoBase):
+    clave: str
+    creador_id: int
+    datos: List[Dict[str, Any]]
+    estado: str = "Borrador"
+    unidad_responsable_id: int
+
+class AnexoUpdate(AnexoBase):
+    clave: Optional[str] = None
+    creador_id: Optional[int] = None
+    datos: Optional[List[Dict[str, Any]]] = None
+    estado: Optional[str] = None
+    unidad_responsable_id: Optional[int] = None
+    fecha_creacion: Optional[datetime] = None
+
+class AnexoResponse(AnexoBase):
+    id:int 
+    creado_en: date
+    actualizado_en: date
 
     class Config:
         from_attributes = True
-        json_encoders = {
+        json_encoders= {
             datetime: lambda v: v.isoformat() if v else None,
             date: lambda v: v.isoformat() if v else None,
-            dict: lambda v: v if isinstance(v, dict) else None
         }
-        orm_mode = True
 
-class AnexoCreate(AnexoBase):
-    pass
-
-class AnexoUpdate(AnexoBase):
-    pass
+# =================================================================================================
+#                                ACTAS DE ENTREGA-RECEPCIÓN
+# =================================================================================================
 
 # schema para acta entrega recepcion
 # esquema para crear un anexo###################################################################################
@@ -323,44 +318,4 @@ class ActaUpdate(BaseModel):
     actualizado_en: Optional[datetime] = None
    
 
-# =================================================================================================
-#                                           ANEXOS
-# =================================================================================================
 
-################### Anexo 
-class AnexoBase(BaseModel):
-    id: Optional[int] = None
-    clave: str
-    creador_id: int
-    datos: List[Dict[str, Any]]  # 👈 ¡Forzar lista!
-    estado: Optional[str] = None
-    unidad_responsable_id: Optional[int] = None
-    fecha_creacion: Optional[datetime] = None
-    acta_id: Optional[int] = None   
-
-class AnexoCreate(AnexoBase):
-    clave: str
-    creador_id: int
-    datos: List[Dict[str, Any]]  # ← Cambiado a List
-    estado: str = "Borrador"  # valor por defecto
-    unidad_responsable_id: int
-
-class AnexoUpdate(AnexoBase):
-    clave: Optional[str] = None
-    creador_id: Optional[int] = None
-    datos: Optional[List[Dict[str, Any]]] = None
-    estado: Optional[str] = None
-    unidad_responsable_id: Optional[int] = None
-    fecha_creacion: Optional[datetime] = None
-
-class AnexoResponse(AnexoBase):
-    id:int 
-    creado_en: date
-    actualizado_en: date
-
-    class Config:
-        from_attributes = True
-        json_encoders= {
-            datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None,
-        }
