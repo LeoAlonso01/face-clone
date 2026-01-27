@@ -660,6 +660,31 @@ def actualizar_unidad(
     data = unidad_actualizacion.model_dump(exclude_unset=True)
     if "responsable_id" in data:
         db_unidad.responsable = data.pop("responsable_id")
+    # Soporte para objeto 'responsable' anidado { "responsable": { "id": 1 } }
+    if "responsable" in data:
+        resp = data.pop("responsable")
+        if resp is None:
+            db_unidad.responsable = None
+        else:
+            resp_id = None
+            try:
+                resp_id = getattr(resp, "id", None)
+            except Exception:
+                pass
+            if resp_id is None and isinstance(resp, dict):
+                resp_id = resp.get("id")
+            if resp_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El objeto 'responsable' debe incluir el campo 'id'"
+                )
+            responsable = db.query(User).get(resp_id)
+            if not responsable:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"No se encontró un usuario con ID {resp_id}"
+                )
+            db_unidad.responsable = resp_id
     for key, value in data.items():
         setattr(db_unidad, key, value)
     
