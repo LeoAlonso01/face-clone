@@ -116,8 +116,21 @@ class UnidadResponsableCreate(UnidadResponsableBase):
     pass
 
 # Esquema para actualización de Unidad Responsable
-class UnidadResponsableUpdate(UnidadResponsableBase):
+class UnidadResponsableUpdate(BaseModel):
+    nombre: Optional[str] = None
+    telefono: Optional[str] = None
+    domicilio: Optional[str] = None
+    municipio: Optional[str] = None
+    localidad: Optional[str] = None
+    codigo_postal: Optional[str] = None
+    rfc: Optional[str] = None
+    correo_electronico: Optional[str] = None
+    responsable: Optional[UserBase] = None
+    tipo_unidad: Optional[str] = None
+    unidad_padre_id: Optional[int] = None
     responsable_id: Optional[int] = None
+    class Config:
+        orm_mode = True
 
 # Esquema para respuesta de Unidad Responsable
 # (AnexoResponse movido a la sección de ANEXOS)

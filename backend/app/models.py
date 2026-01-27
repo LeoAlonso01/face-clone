@@ -58,8 +58,8 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     password = Column(String)
-    created_at = Column(DateTime, default=DateTime)
-    updated_at = Column(DateTime, default=DateTime, onupdate=DateTime)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     is_deleted = Column(Boolean, default=False) # Soft delete
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     # relaciones
@@ -86,8 +86,8 @@ class UnidadResponsable(Base):
 
     responsable = Column(Integer, ForeignKey("users.id"))
     tipo_unidad = Column(String(50))
-    fecha_creacion = Column(DateTime, default=DateTime)
-    fecha_cambio = Column(DateTime, default=DateTime, onupdate=DateTime)
+    fecha_creacion = Column(DateTime, server_default=func.now())
+    fecha_cambio = Column(DateTime, server_default=func.now(), onupdate=func.now())
     # columna de jerarquía para relacionar unidades responsables
     unidad_padre_id = Column(Integer, ForeignKey("unidades_responsables.id_unidad"), nullable=True)
     # Relacion

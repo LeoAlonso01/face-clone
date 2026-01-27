@@ -870,8 +870,8 @@ def read_acta(acta_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Acta no encontrada")
     return db_acta
 
-@app.post("/actas", response_model=ActaResponse, status_code=status.HTTP_201_CREATED)
-def crear_acta(acta: ActaCreate, db: Session = Depends(get_db)):
+@app.post("/actas", response_model=ActaResponse, status_code=status.HTTP_201_CREATED, tags=["Actas de Entrega Recepción"])
+def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Crear una nueva acta de entrega-recepción
     """
@@ -903,8 +903,15 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db)):
         db.add(db_acta)
         db.commit()
         db.refresh(db_acta)
-        
-        # Si los campos de fecha son None, asignar valores por defecto
+        anexos_a_asociar = db.query(Anexos).filter(
+            Anexos.unidad_responsable_id == acta.unidad_responsable,
+            Anexos.creador_id == current_user.id,
+            ((Anexos.acta_id == None) | (Anexos.acta_id == 0))
+        ).all()
+        for an in anexos_a_asociar:
+            an.acta_id = db_acta.id
+        db.commit()
+        db.refresh(db_acta)
         if db_acta.creado_en is None:
             db_acta.creado_en = datetime.utcnow()
         if db_acta.actualizado_en is None:
@@ -912,7 +919,12 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db)):
             
         db.commit()
         db.refresh(db_acta)
-        
+        db_acta = (
+            db.query(ActaEntregaRecepcion)
+            .options(selectinload(ActaEntregaRecepcion.anexos))
+            .filter(ActaEntregaRecepcion.id == db_acta.id)
+            .first()
+        )
         return db_acta
         
     except HTTPException:

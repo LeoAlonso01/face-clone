@@ -57,9 +57,9 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    # Carga la relación con unidad_responsable usando joinedload
+    # Carga la relación correcta con la unidad responsable
     user = db.query(User).options(
-        joinedload(User.unidades_a_cargo)
+        joinedload(User.unidad)
     ).filter(User.username == username).first()
     
     if user is None:
