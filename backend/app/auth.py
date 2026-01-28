@@ -76,9 +76,80 @@ def get_admin_user(current_user: User = Depends(get_current_user)):
 
 # services/email_service.py
 def enviar_email_recuperacion(destinatario: str, nombre_usuario: str, token: str):
-    # 🔜 Aquí integraremos Resend, Gmail, etc.
-    # Por ahora, solo registramos
-    print(f"📧 [Simulado] Enviando correo a {destinatario}")
-    print(f"Hola {nombre_usuario}, usa este token: {token}")
-    print(f"Enlace: http://localhost:3000/reset-password?token={token}")
-    print("⚠️ Este es un entorno de desarrollo. No se envió ningún correo real.")
+    # Configuración para entorno de producción con SendGrid
+    SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY', '')
+    
+    # Si no hay API key configurada, usar modo simulado
+    if not SENDGRID_API_KEY:
+        print(f"📧 [Simulado] Enviando correo a {destinatario}")
+        print(f"Hola {nombre_usuario}, usa este token: {token}")
+        print(f"Enlace: http://localhost:3000/reset-password?token={token}")
+        print("⚠️ SENDGRID_API_KEY no configurada. No se envió ningún correo real.")
+        return
+    
+    # Envío real con SendGrid
+    try:
+        from sendgrid import SendGridAPIClient
+        from sendgrid.helpers.mail import Mail, Email, To, Content
+        
+        # Crear el mensaje
+        from_email = Email("no-reply@umich.mx")  # Cambiar por tu email verificado en SendGrid
+        to_email = To(destinatario)
+        subject = "Recuperación de contraseña - Sistema UMICH"
+        
+        # Plantilla HTML del email
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+                .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+                .header {{ background-color: #2c5aa0; color: white; padding: 20px; text-align: center; }}
+                .content {{ background-color: #f9f9f9; padding: 30px; border-radius: 5px; }}
+                .token {{ background-color: #eee; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 16px; }}
+                .button {{ background-color: #2c5aa0; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Recuperación de Contraseña</h1>
+                </div>
+                <div class="content">
+                    <h2>Hola {nombre_usuario},</h2>
+                    <p>Has solicitado restablecer tu contraseña en el Sistema de la Universidad Michoacana.</p>
+                    
+                    <p><strong>Token de recuperación:</strong></p>
+                    <div class="token">{token}</div>
+                    
+                    <p>O haz clic en el siguiente enlace:</p>
+                    <a href="http://localhost:3000/reset-password?token={token}" class="button">
+                        Restablecer Contraseña
+                    </a>
+                    
+                    <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                        ⚠️ Este token expirará en 1 hora. Si no solicitaste este cambio, ignora este mensaje.
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        content = Content("text/html", html_content)
+        mail = Mail(from_email, to_email, subject, content)
+        
+        # Enviar el email
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        response = sg.send(mail)
+        
+        print(f"✅ Email enviado exitosamente a {destinatario}")
+        print(f"Status Code: {response.status_code}")
+        
+    except Exception as e:
+        print(f"❌ Error enviando email a {destinatario}: {e}")
+        # Fallback: mostrar info en consola
+        print(f"📧 [Fallback] Token para {nombre_usuario}: {token}")
+        print(f"📧 [Fallback] Enlace: http://localhost:3000/reset-password?token={token}")

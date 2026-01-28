@@ -1,5 +1,5 @@
 # schemas.py
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, validator
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, date, time
 from sqlalchemy import Enum as PythonEnum
@@ -49,6 +49,16 @@ class UserDB(UserBase):
 
 class ForgotPasswordRequest(BaseModel):
     email: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    
+    @validator('new_password')
+    def validate_password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError('La contraseña debe tener al menos 8 caracteres')
+        return v
 
 class UnidadResponsableSimple(BaseModel):
     id_unidad: int

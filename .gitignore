@@ -4,3 +4,9 @@ __pycache__/
 
 # ignorar toda la carpeta de frontend
 /frontend/
+
+# ignorar documentación generada automáticamente
+/docs/
+
+# ignorar el .env.example
+.env.example

@@ -22,7 +22,7 @@ from .auth import (
 )
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import Anexos, User, UserRoles, UnidadResponsable
-from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, UserResponse, AnexoUpdate
+from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, ChangePasswordRequest, UserResponse, AnexoUpdate
 from .models import ActaEntregaRecepcion
 from .schemas import AnexoCreate, AnexoResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
@@ -303,10 +303,16 @@ def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user))
 @app.put("/users/{user_id}/change-password", tags=["Usuario"])
 def change_password(
     user_id: int,
-    current_password: str = Body(...),
-    new_password: str = Body(...),
-    # current_user: User = Depends(get_current_user),
+    password_data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
 ):
+    # Validar que el usuario autenticado solo pueda cambiar su propia contraseña
+    if current_user.id != user_id and current_user.role != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para cambiar la contraseña de otro usuario",
+        )
+    
     with session_scope() as db:
         user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
         if not user:
@@ -315,13 +321,27 @@ def change_password(
                 detail="Usuario no encontrado",
             )
 
-        if not verify_password(current_password, getattr(user, "password")):
+        # Validar que la contraseña actual sea correcta
+        if not verify_password(password_data.current_password, user.password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Contraseña actual incorrecta",
             )
 
-        setattr(user, "password", get_password_hash(new_password))
+        # Validar que la nueva contraseña sea diferente a la actual
+        if verify_password(password_data.new_password, user.password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La nueva contraseña no puede ser igual a la actual",
+            )
+
+        # Actualizar la contraseña
+        user.password = get_password_hash(password_data.new_password)
+        user.updated_at = datetime.utcnow()
+        
+        db.commit()
+        db.refresh(user)
+        
         return {"message": "Contraseña actualizada exitosamente"}
 
 @app.post("/forgot-password", tags=["Usuario"])
