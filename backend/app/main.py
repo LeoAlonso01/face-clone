@@ -39,10 +39,21 @@ import os
 from fastapi.staticfiles import StaticFiles
 
 
-UPLOAD_DIR = "/app/uploads/pdfs"
-STATIC_DIR = "/app/static/pdfs"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(STATIC_DIR, exist_ok=True)
+# Attempt to use container paths if available, but fall back to local project paths
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/app/uploads/pdfs")
+STATIC_DIR = os.getenv("STATIC_DIR", "/app/static/pdfs")
+
+# Ensure directories exist and are writable; if not, fall back to local ./uploads and ./static
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(STATIC_DIR, exist_ok=True)
+except OSError as e:
+    # Fallback when running in environments where /app is read-only (e.g., some build/test sandboxes)
+    UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.getcwd(), "uploads/pdfs"))
+    STATIC_DIR = os.getenv("STATIC_DIR", os.path.join(os.getcwd(), "static/pdfs"))
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(STATIC_DIR, exist_ok=True)
+
 
 async def save_pdf(file: UploadFile):
     if file.content_type != "application/pdf":
@@ -119,7 +130,15 @@ def generar_token_seguro(length: int = 32 ) -> str:
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-app.mount("/static", StaticFiles(directory="/app/static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Include routers
+from .routers import users, unidades, actas, anexos, files
+app.include_router(users.router)
+app.include_router(unidades.router)
+app.include_router(actas.router)
+app.include_router(anexos.router)
+app.include_router(files.router)
 
 # =================================================================================================
 #                                           ROOT
@@ -131,30 +150,9 @@ def read_root():
 # =================================================================================================
 #                                           ARCHIVOS
 # =================================================================================================
-@app.post("/pdf", tags=["Archivos"])
-async def upload_pdf(file: UploadFile = File(...)):
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
-
-    # Generar nombre único
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{timestamp}_{file.filename}"
-    file_path = os.path.join(UPLOAD_DIR, filename)
-    static_path = os.path.join(STATIC_DIR, filename)
-
-    # Guardar en uploads
-    content = await file.read()
-    with open(file_path, "wb") as buffer:
-        buffer.write(content)
-
-    # Copiar a static para servirlo públicamente
-    with open(static_path, "wb") as buffer:
-        buffer.write(content)
-
-    # URL pública
-    file_url = f"http://localhost:8000/static/pdfs/{filename}"
-
-    return {"url": file_url}
+# Moved to router: backend/app/routers/files.py
+async def _moved_upload_pdf_stub(file: UploadFile = File(...)):
+    raise RuntimeError("Endpoint moved to router: POST /pdf")
 
 # =================================================================================================
 #                                           USUARIOS
@@ -176,215 +174,36 @@ def contraloria_users():
         )
     return users
     
-@app.post("/register", status_code=status.HTTP_201_CREATED, tags=["Usuario"])
-def register(user: UserCreate):
-    with session_scope() as db:
-        # ✅ Aquí el error: estaba comparando con el objeto completo
-        existing_user = db.query(User).filter(User.username == user.username).first()
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El nombre de usuario ya está en uso"
-            )
+# Endpoint moved to router: backend/app/routers/users.py
+def _moved_register_stub(*args, **kwargs):
+    raise RuntimeError("Endpoint moved to router: POST /register")
 
-        existing_email = db.query(User).filter(User.email == user.email).first()
-        if existing_email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El correo electrónico ya está en uso"
-            )
 
-        hashed_password = get_password_hash(user.password)
+# Endpoint moved to router: backend/app/routers/users.py
+def _moved_login_stub(*args, **kwargs):
+    raise RuntimeError("Endpoint moved to router: POST /token")
 
-        db_user = User(
-            username=user.username,
-            email=user.email,
-            password=hashed_password,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            is_deleted=False,
-            role= None # asignar sin valor por defecto
-        )
-        db.add(db_user)
-        db.flush()
 
-        return {
-            "message": "Usuario registrado exitosamente",
-            "user:" : {
-                "id": db_user.id,
-                "username": db_user.username,
-                "email": db_user.email,
-                "role": db_user.role.value if isinstance(db_user.role, Enum) else db_user.role
-            }
-        }
+# User endpoints moved to router: backend/app/routers/users.py
 
-@app.post("/token", tags=["Usuario"])
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    with session_scope() as db:
-        # Verificar si el usuario existe y la contraseña es correcta
-        user = authenticate_user(db, form_data.username, form_data.password)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Nombre de usuario o contraseña incorrectos",
-            )
-        
-            # comprobar si el usuario tiene un rol asignado
-        if user.role is None:
-            # Si el rol es None, significa que no se ha asignado un rol
-            raise HTTPException(
-                status_code=403,
-                detail="Este usuario aun no tiene un rol asignado, Solicta acceso a un administrador"
-            )
-        
-        # Comprobar si el isdeleted es True
-        if user.is_deleted:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Usuario eliminado, no puedes iniciar sesión"
-            )
-        
-        # obtener la unidad responsable del usuario
-        
-        
-        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={
-                "sub": user.username,
-                "user_id": user.id,
-                "email": user.email,
-                "username": user.username,
-                "role": user.role.value if isinstance(user.role, Enum) else user.role
-            },
-            expires_delta=access_token_expires
-        )
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user_id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "role": user.role
-        }
+def _moved_get_users_stub(*args, **kwargs):
+    raise RuntimeError("Endpoint moved to router: /users")
 
-@app.get("/users", response_model=list[UserResponse], tags=["Usuario"])
-def get_users(skip: int = 0, 
-        limit: int = 1000, 
-        #current_user: User = Depends(get_current_user)
-        ):
-    with session_scope() as db:
-        users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
-        return jsonable_encoder(users)
+def _moved_read_user_stub(*args, **kwargs):
+    raise RuntimeError("Endpoint moved to router: /users/{user_id}")
 
-@app.get("/users/{user_id}", tags=["Usuario"])
-def read_user(
-    user_id: int, 
-    # current_user: User = Depends(get_current_user)
-    ):
-    with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
-        if user is None:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
-        return jsonable_encoder(user)
+def _moved_soft_delete_user_stub(*args, **kwargs):
+    raise RuntimeError("Endpoint moved to router: DELETE /users/{user_id}")
 
-@app.delete("/users/{user_id}", tags=["Usuario"])
-def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user)):
-    with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado",
-            )
-        setattr(user, "is_deleted", True)
-        return {"message": "Usuario marcado como eliminado"}
 
-@app.put("/users/{user_id}/change-password", tags=["Usuario"])
-def change_password(
-    user_id: int,
-    password_data: ChangePasswordRequest,
-    current_user: User = Depends(get_current_user),
-):
-    # Validar que el usuario autenticado solo pueda cambiar su propia contraseña
-    if current_user.id != user_id and current_user.role != "ADMIN":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permisos para cambiar la contraseña de otro usuario",
-        )
-    
-    with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado",
-            )
+# Password endpoints moved to router: backend/app/routers/users.py
 
-        # Validar que la contraseña actual sea correcta
-        if not verify_password(password_data.current_password, user.password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Contraseña actual incorrecta",
-            )
+def _moved_change_password_stub(*args, **kwargs):
+    raise RuntimeError("Endpoint moved to router: PUT /users/{user_id}/change-password")
 
-        # Validar que la nueva contraseña sea diferente a la actual
-        if verify_password(password_data.new_password, user.password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La nueva contraseña no puede ser igual a la actual",
-            )
+async def _moved_forgot_password_stub(*args, **kwargs):
+    raise RuntimeError("Endpoint moved to router: POST /forgot-password")
 
-        # Actualizar la contraseña
-        user.password = get_password_hash(password_data.new_password)
-        user.updated_at = datetime.utcnow()
-        
-        db.commit()
-        db.refresh(user)
-        
-        return {"message": "Contraseña actualizada exitosamente"}
-
-@app.post("/forgot-password", tags=["Usuario"])
-async def forgot_password(
-    request: ForgotPasswordRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
-):
-    # buscar usuario por email
-     # Buscar usuario por email
-    user = db.query(User).filter(User.email == request.email, User.is_deleted == False).first()
-
-    # Si no existe, no revelamos información (seguridad)
-    if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="Si el email está registrado, recibirás instrucciones para recuperar tu contraseña."
-        )
-
-    # Generar token y expiración (15 minutos)
-    token = generar_token_seguro()
-    expires_at = datetime.utcnow() + timedelta(minutes=15)
-
-    # Guardar en la base de datos
-    user.reset_token = token
-    user.reset_expires = expires_at
-    db.commit()
-
-    # Enviar correo en segundo plano (mañana lo activamos)
-    try:
-        background_tasks.add_task(
-            enviar_email_recuperacion,
-            destinatario=user.email,
-            nombre_usuario=user.username,
-            token=token
-        )
-    except Exception as e:
-        print(f"[WARN] No se pudo programar el envío de correo: {e}")
-        # No detenemos el flujo
-
-    return {
-        "message": "Si el email está registrado, recibirás instrucciones para recuperar tu contraseña."
-    }
 
 # =================================================================================================
 #                                           DEBUG
