@@ -9,9 +9,10 @@ from sqlalchemy import Boolean
 from enum import Enum as PyEnum
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
-from sqlalchemy.ext.declarative import declarative_base
+# Use the Base object from database.py (avoid redefining declarative_base here)
+# from sqlalchemy.ext.declarative import declarative_base
 
-Base = declarative_base()
+# Base = declarative_base()  # DO NOT redefine; imported from .database
 
 def utcnow():
     return datetime.now() 

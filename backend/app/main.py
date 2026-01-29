@@ -39,10 +39,19 @@ import os
 from fastapi.staticfiles import StaticFiles
 
 
-UPLOAD_DIR = "/app/uploads/pdfs"
-STATIC_DIR = "/app/static/pdfs"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-os.makedirs(STATIC_DIR, exist_ok=True)
+UPLOAD_DIR = os.getenv('UPLOAD_DIR', "/app/uploads/pdfs")
+STATIC_DIR = os.getenv('STATIC_DIR', "/app/static/pdfs")
+
+# Intentar crear directorios; si falla (readonly FS), usar rutas locales temporales
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(STATIC_DIR, exist_ok=True)
+except OSError:
+    # Fallback a paths dentro del repo para entornos de test o sistemas de solo lectura
+    UPLOAD_DIR = os.getenv('UPLOAD_DIR', os.path.join(os.getcwd(), "uploads/pdfs"))
+    STATIC_DIR = os.getenv('STATIC_DIR', os.path.join(os.getcwd(), "static/pdfs"))
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(STATIC_DIR, exist_ok=True)
 
 async def save_pdf(file: UploadFile):
     if file.content_type != "application/pdf":
@@ -119,7 +128,7 @@ def generar_token_seguro(length: int = 32 ) -> str:
     alphabet = string.ascii_letters + string.digits
     return ''.join(secrets.choice(alphabet) for _ in range(length))
 
-app.mount("/static", StaticFiles(directory="/app/static"), name="static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # =================================================================================================
 #                                           ROOT
@@ -177,7 +186,7 @@ def contraloria_users():
     return users
     
 @app.post("/register", status_code=status.HTTP_201_CREATED, tags=["Usuario"])
-def register(user: UserCreate):
+def register(user: UserCreate, current_user: User = Depends(get_admin_user)): # pero cualquiera deberia poder registrarse no solo un admin
     with session_scope() as db:
         # ✅ Aquí el error: estaba comparando con el objeto completo
         existing_user = db.query(User).filter(User.username == user.username).first()
@@ -354,12 +363,11 @@ async def forgot_password(
      # Buscar usuario por email
     user = db.query(User).filter(User.email == request.email, User.is_deleted == False).first()
 
-    # Si no existe, no revelamos información (seguridad)
+    # No divulgar si el email existe para mayor seguridad
     if not user:
-        raise HTTPException(
-            status_code=404,
-            detail="Si el email está registrado, recibirás instrucciones para recuperar tu contraseña."
-        )
+        return {
+            "message": "Si el email está registrado, recibirás instrucciones para recuperar tu contraseña."
+        }
 
     # Generar token y expiración (15 minutos)
     token = generar_token_seguro()
@@ -367,7 +375,7 @@ async def forgot_password(
 
     # Guardar en la base de datos
     user.reset_token = token
-    user.reset_expires = expires_at
+    user.reset_token_expiration = expires_at
     db.commit()
 
     # Enviar correo en segundo plano (mañana lo activamos)
@@ -826,7 +834,8 @@ def get_unidad(
 def asignar_responsable(
     unidad_id: int,
     usuario_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_admin_user)
 ):
     # Verificar que existe la unidad
     db_unidad = db.query(UnidadResponsable).filter(UnidadResponsable.id_unidad == unidad_id).first()
@@ -834,23 +843,23 @@ def asignar_responsable(
         raise HTTPException(status_code=404, detail="Unidad no encontrada")
     
     # Verificar que existe el usuario
-    db_usuario = db.query(User).filter(User.id_usuario == usuario_id, User.is_deleted == False).first()
+    db_usuario = db.query(User).filter(User.id == usuario_id, User.is_deleted == False).first()
     if not db_usuario:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    # Asignar responsable
-    db_unidad.responsable = db_usuario  # Usa el nombre correcto del campo FK en tu modelo
+    # Asignar responsable (almacenando el id)
+    db_unidad.responsable = db_usuario.id
     db.commit()
     db.refresh(db_unidad)
     
-    return {"message": "Responsable asignado correctamente", "unidad": db_unidad}
+    return {"message": "Responsable asignado correctamente", "unidad": jsonable_encoder(db_unidad)}
 
 
 # =================================================================================================
 #                                   ACTAS DE ENTREGA RECEPCIÓN
 # =================================================================================================
 @app.get("/actas", response_model=List[ActaResponse], tags=["Actas de Entrega Recepción"])
-def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
+def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
         actas = (
             db.query(ActaEntregaRecepcion)
@@ -879,7 +888,7 @@ def read_actas(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
 
 
 @app.get("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
-def read_acta(acta_id: int, db: Session = Depends(get_db)):
+def read_acta(acta_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_acta = (
         db.query(ActaEntregaRecepcion)
         .options(selectinload(ActaEntregaRecepcion.anexos))
@@ -954,7 +963,7 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: Us
         raise HTTPException(status_code=500, detail=f"Error al crear acta: {str(e)}")
 
 @app.put("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
-def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
+def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
@@ -966,7 +975,7 @@ def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
 
 
 @app.delete("/actas/{acta_id}", tags=["Actas de Entrega Recepción"])
-def delete_acta(acta_id: int, db: Session = Depends(get_db)):
+def delete_acta(acta_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
     db_acta = db.query(ActaEntregaRecepcion).filter(
         ActaEntregaRecepcion.id == acta_id
     ).first()
@@ -986,7 +995,8 @@ def delete_acta(acta_id: int, db: Session = Depends(get_db)):
 def read_anexos(
     skip: int = 0,
     limit: int = 1000,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     try:
         anexos = db.query(Anexos).filter(Anexos.is_deleted == False).offset(skip).limit(limit).all()
@@ -998,10 +1008,10 @@ def read_anexos(
     
 # add by POST
 @app.post("/anexos", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
+def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     
     db_anexo = Anexos(clave=anexo.clave,
-        creador_id=anexo.creador_id,
+        creador_id=current_user.id,
         datos=anexo.datos,
         estado=anexo.estado,
         unidad_responsable_id=anexo.unidad_responsable_id,
@@ -1025,7 +1035,7 @@ def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
 
 # para actualizar un anexos existente
 @app.put("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db)):
+def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
     if not db_anexo:
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
@@ -1042,7 +1052,7 @@ def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db
 
 # marcar un anexo como eliminado
 @app.delete("/anexos/{anexo_id}", tags=["Anexos de Entrega Recepción"])
-def delete_anexo(anexo_id: int, db: Session = Depends(get_db)):
+def delete_anexo(anexo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
     db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
     if not db_anexo:
         raise HTTPException(status_code=404, detail="Anexo no encontrado")

@@ -1,0 +1,15 @@
+{
+  "sqltools.connections": [
+    {
+      "name": "Docker Postgres - face-clone",
+      "driver": "PostgreSQL",
+      "previewLimit": 50,
+      "server": "localhost",
+      "port": 5433,
+      "database": "facebook_clone",
+      "username": "user",
+      "password": "password",
+      "ssl": false
+    }
+  ]
+}
