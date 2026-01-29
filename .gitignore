@@ -9,3 +9,6 @@ __pycache__/
 
 # ignorar el .env.example
 .env.example
+
+# test artifacts
+test_temp.db
