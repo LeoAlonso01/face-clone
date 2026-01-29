@@ -1,14 +1,10 @@
-from sqlalchemy import JSON, Column, Integer, String, Text, DateTime, ForeignKey, Enum
+from sqlalchemy import JSON, Column, Integer, String, Text, Date, DateTime, ForeignKey, Enum, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
-from datetime import datetime, date, time
-from sqlalchemy import ForeignKey
+from datetime import datetime, date
 from sqlalchemy.sql import func
 from typing import Optional
-from sqlalchemy import Boolean
 from enum import Enum as PyEnum
-from pydantic import BaseModel
-from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
 
 def utcnow():
     return datetime.now() 
@@ -17,36 +13,6 @@ class UserRoles(PyEnum):
     USER = "USER"
     ADMIN = "ADMIN"
     AUDITOR = "AUDITOR"
-
-""" class UserResponse(BaseModel):
-    id: int
-    username: str
-    email: str
-    role: UserRoles | None
-    is_deleted: bool
-
-    class Config:
-        orm_mode = True
-
-class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
-    role: UserRoles
-
-    class Config:
-        orm_mode = True
-
-# class UserUpdate(BaseModel):
-class UserUpdate(BaseModel):
-    username: str | None = None
-    email: str | None = None
-    password: str | None = None
-    role: UserRoles | None = None
-    is_deleted: bool | None = None
-
-    class Config:
-        orm_mode = True """
 
 class User(Base):
     __tablename__ = "users"

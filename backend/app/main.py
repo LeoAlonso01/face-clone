@@ -1,15 +1,21 @@
 import secrets
 import string
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status, Body, Query 
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from .database import Base, engine
-from typing import List
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, text
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, timedelta, datetime
-from enum import Enum
+from typing import List
 import logging
+import os
+
+# Database & ORM
+from .database import SessionLocal, engine, Base, get_db
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy.exc import SQLAlchemyError
+
+# Auth & models
 from .auth import (
     authenticate_user,
     create_access_token,
@@ -18,24 +24,18 @@ from .auth import (
     get_password_hash,
     verify_password,
     get_admin_user,
-    
 )
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-from .models import Anexos, User, UserRoles, UnidadResponsable
-from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, ChangePasswordRequest, UserResponse, AnexoUpdate
-from .models import ActaEntregaRecepcion
-from .schemas import AnexoCreate, AnexoResponse
-from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
-from .database import SessionLocal, engine, Base, get_db
-from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy.sql import text
-from contextlib import contextmanager
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy.orm import joinedload
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import joinedload
+from .models import Anexos, User, UserRoles, UnidadResponsable, ActaEntregaRecepcion
+from .schemas import (
+    ActaResponse, ActaCreate, ActaUpdate,
+    ForgotPasswordRequest, ChangePasswordRequest,
+    UserResponse, AnexoUpdate, AnexoCreate, AnexoResponse,
+    UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
+)
+
 from fastapi import UploadFile, File
-import os
 from fastapi.staticfiles import StaticFiles
 
 
@@ -55,25 +55,7 @@ except OSError as e:
     os.makedirs(STATIC_DIR, exist_ok=True)
 
 
-async def save_pdf(file: UploadFile):
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Solo se permiten PDFs")
-
-    filename = file.filename
-    upload_path = os.path.join(UPLOAD_DIR, filename)
-    static_path = os.path.join(STATIC_DIR, filename)
-
-    # Guardar en uploads
-    with open(upload_path, "wb") as f:
-        f.write(await file.read())
-
-    # Copiar a static para servirlo
-    import shutil
-    shutil.copy(upload_path, static_path)
-
-    # URL pública
-    file_url = f"http://localhost:8000/static/pdfs/{filename}"
-    return {"file_url": file_url}
+# File upload logic moved to `backend/app/routers/files.py` (kept there for a single source of truth).
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -150,9 +132,7 @@ def read_root():
 # =================================================================================================
 #                                           ARCHIVOS
 # =================================================================================================
-# Moved to router: backend/app/routers/files.py
-async def _moved_upload_pdf_stub(file: UploadFile = File(...)):
-    raise RuntimeError("Endpoint moved to router: POST /pdf")
+# Endpoint for file uploads moved to `backend/app/routers/files.py` (kept there).
 
 # =================================================================================================
 #                                           USUARIOS
@@ -173,36 +153,11 @@ def contraloria_users():
             detail=f"Error al conectar con contraloría: {str(e)}"
         )
     return users
-    
-# Endpoint moved to router: backend/app/routers/users.py
-def _moved_register_stub(*args, **kwargs):
-    raise RuntimeError("Endpoint moved to router: POST /register")
 
+# Las rutas de usuario se migraron completamente a `backend/app/routers/users.py`.
+# Antes existían stubs temporales aquí; se eliminaron para mantener el código limpio
+# y evitar duplicidades. Mantener la lógica en un solo lugar ayuda a la mantenibilidad.
 
-# Endpoint moved to router: backend/app/routers/users.py
-def _moved_login_stub(*args, **kwargs):
-    raise RuntimeError("Endpoint moved to router: POST /token")
-
-
-# User endpoints moved to router: backend/app/routers/users.py
-
-def _moved_get_users_stub(*args, **kwargs):
-    raise RuntimeError("Endpoint moved to router: /users")
-
-def _moved_read_user_stub(*args, **kwargs):
-    raise RuntimeError("Endpoint moved to router: /users/{user_id}")
-
-def _moved_soft_delete_user_stub(*args, **kwargs):
-    raise RuntimeError("Endpoint moved to router: DELETE /users/{user_id}")
-
-
-# Password endpoints moved to router: backend/app/routers/users.py
-
-def _moved_change_password_stub(*args, **kwargs):
-    raise RuntimeError("Endpoint moved to router: PUT /users/{user_id}/change-password")
-
-async def _moved_forgot_password_stub(*args, **kwargs):
-    raise RuntimeError("Endpoint moved to router: POST /forgot-password")
 
 
 # =================================================================================================
