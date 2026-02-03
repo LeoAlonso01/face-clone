@@ -60,12 +60,46 @@ class ChangePasswordRequest(BaseModel):
             raise ValueError('La contraseña debe tener al menos 8 caracteres')
         return v
 
+class ResetPasswordRequest(BaseModel):
+    new_password: str
+    
+    @validator('new_password')
+    def validate_password_strength(cls, v):
+        if len(v) < 8:
+            raise ValueError('La contraseña debe tener al menos 8 caracteres')
+        return v
+
+class PasswordChangeResponse(BaseModel):
+    message: str
+    success: bool
+
 class UnidadResponsableSimple(BaseModel):
     id_unidad: int
     nombre: str
 
     class Config:
         orm_mode = True
+
+
+# =================================================================================================
+#                                           AUDIT LOGS
+# =================================================================================================
+class AuditLogResponse(BaseModel):
+    id: int
+    actor_id: Optional[int] = None
+    action: str
+    object_type: Optional[str] = None
+    object_id: Optional[int] = None
+    timestamp: Optional[datetime] = None
+    success: Optional[bool] = True
+    ip_address: Optional[str] = None
+    metadata: Optional[dict] = None
+
+    class Config:
+        from_attributes = True
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
 
 # Esquema para respuesta (sin password)
 class UserResponse(UserBase):

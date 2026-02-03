@@ -68,6 +68,37 @@ class User(Base):
     reset_token = Column(String, nullable=True)
     reset_token_expiration = Column(DateTime, nullable=True)
 
+class PasswordAuditLog(Base):
+    __tablename__ = "password_audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    target_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action = Column(String, nullable=False)  # "password_reset" o "password_change"
+    ip_address = Column(String, nullable=True)
+    timestamp = Column(DateTime, server_default=func.now())
+    success = Column(Boolean, default=True)
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    action = Column(String(100), nullable=False)
+    object_type = Column(String(50), nullable=True)  # e.g., 'user', 'anexo', 'acta'
+    object_id = Column(Integer, nullable=True)
+    timestamp = Column(DateTime, server_default=func.now())
+    success = Column(Boolean, default=True)
+    ip_address = Column(String(50), nullable=True)
+    # Not using attribute name `metadata` because it's reserved by SQLAlchemy's Declarative API
+    # Use attribute `metadata_json` that maps to DB column `metadata`
+    metadata_json = Column('metadata', JSON, nullable=True)
+
+    # índices recomendados (se pueden crear desde migración manual si se prefiere)
+    # SQLAlchemy puede crear índices si se usan Index(), pero aquí lo dejamos para migración SQL
+
+
 
 # This is the model for Unidad Responsable
 # It represents a responsible unit in the system, such as a department or office.

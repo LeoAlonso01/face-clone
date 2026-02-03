@@ -1,10 +1,11 @@
 import secrets
 import string
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status, Body, Query 
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status, Body, Query, Request 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from .database import Base, engine
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
+from .middleware import AuditMiddleware
 from sqlalchemy import create_engine, text
 from contextlib import asynccontextmanager
 from datetime import date, timedelta, datetime
@@ -20,9 +21,10 @@ from .auth import (
     get_admin_user,
     
 )
+from .audit import create_audit_log
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-from .models import Anexos, User, UserRoles, UnidadResponsable
-from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, ChangePasswordRequest, UserResponse, AnexoUpdate
+from .models import Anexos, User, UserRoles, UnidadResponsable, PasswordAuditLog, AuditLog
+from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, ChangePasswordRequest, UserResponse, AnexoUpdate, ResetPasswordRequest, PasswordChangeResponse
 from .models import ActaEntregaRecepcion
 from .schemas import AnexoCreate, AnexoResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
@@ -113,6 +115,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+# Middleware para capturar IP y user-agent (disponible en request.state.client_ip)
+app.add_middleware(AuditMiddleware)
 
 # generacion token seguro
 def generar_token_seguro(length: int = 32 ) -> str:
@@ -300,20 +305,35 @@ def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user))
         setattr(user, "is_deleted", True)
         return {"message": "Usuario marcado como eliminado"}
 
-@app.put("/users/{user_id}/change-password", tags=["Usuario"])
+@app.post("/users/{user_id}/change_password", response_model=PasswordChangeResponse, tags=["Usuario"])
 def change_password(
     user_id: int,
     password_data: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
+    request: Request = None
 ):
-    # Validar que el usuario autenticado solo pueda cambiar su propia contraseña
-    if current_user.id != user_id and current_user.role != "ADMIN":
+    """
+    Permite a un usuario cambiar su propia contraseña o a un admin cambiar la de cualquier usuario.
+    
+    - **user_id**: ID del usuario cuya contraseña se va a cambiar
+    - **current_password**: Contraseña actual del usuario (requerida para validación)
+    - **new_password**: Nueva contraseña (mínimo 8 caracteres)
+    
+    Seguridad:
+    - Los usuarios solo pueden cambiar su propia contraseña
+    - Los admins pueden cambiar la contraseña de cualquier usuario
+    - Se valida que la contraseña actual sea correcta
+    - La nueva contraseña debe cumplir con políticas mínimas
+    """
+    # Validar permisos: el usuario solo puede cambiar su propia contraseña, a menos que sea admin
+    if current_user.id != user_id and current_user.role != UserRoles.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permisos para cambiar la contraseña de otro usuario",
         )
     
     with session_scope() as db:
+        # Buscar el usuario objetivo
         user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
         if not user:
             raise HTTPException(
@@ -335,14 +355,113 @@ def change_password(
                 detail="La nueva contraseña no puede ser igual a la actual",
             )
 
-        # Actualizar la contraseña
+        # Hash de la nueva contraseña con bcrypt (cost 12 por defecto en passlib)
         user.password = get_password_hash(password_data.new_password)
         user.updated_at = datetime.utcnow()
         
-        db.commit()
-        db.refresh(user)
+        # Registrar auditoría si un admin cambió la contraseña de otro usuario
+        if current_user.id != user_id:
+            audit_log = PasswordAuditLog(
+                admin_id=current_user.id,
+                target_user_id=user_id,
+                action="password_change",
+                success=True
+            )
+            db.add(audit_log)
+
+        # Registro genérico en audit_logs
+        try:
+            create_audit_log(
+                db=db,
+                actor_id=current_user.id,
+                action='change_password',
+                object_type='user',
+                object_id=user_id,
+                metadata={"admin_override": current_user.id != user_id},
+                ip=(request.state.client_ip if request else None)
+            )
+        except Exception:
+            pass
         
-        return {"message": "Contraseña actualizada exitosamente"}
+        db.commit()
+        
+        logger.info(f"Contraseña cambiada exitosamente para usuario {user_id} por usuario {current_user.id}")
+        
+        return PasswordChangeResponse(
+            message="Contraseña actualizada exitosamente",
+            success=True
+        )
+
+@app.post("/admin/users/{user_id}/reset_password", response_model=PasswordChangeResponse, tags=["Usuario", "Admin"])
+def reset_password(
+    user_id: int,
+    password_data: ResetPasswordRequest,
+    current_user: User = Depends(get_admin_user),
+    request: Request = None,
+):
+    """
+    Permite a un administrador resetear la contraseña de cualquier usuario.
+    
+    - **user_id**: ID del usuario cuya contraseña se va a resetear
+    - **new_password**: Nueva contraseña (mínimo 8 caracteres)
+    
+    Seguridad:
+    - Solo los administradores pueden usar este endpoint
+    - Se registra un log de auditoría con admin_id, target_user_id y timestamp
+    - La contraseña se hashea con bcrypt (cost 12)
+    - NO se devuelve la contraseña en la respuesta
+    
+    Recomendación: Forzar cambio de contraseña en el próximo login
+    """
+    with session_scope() as db:
+        # Buscar el usuario objetivo
+        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado",
+            )
+        
+        # Hash de la nueva contraseña con bcrypt
+        user.password = get_password_hash(password_data.new_password)
+        user.updated_at = datetime.utcnow()
+        
+        # Registrar auditoría (OBLIGATORIO para seguridad)
+        audit_log = PasswordAuditLog(
+            admin_id=current_user.id,
+            target_user_id=user_id,
+            action="password_reset",
+            success=True
+        )
+        db.add(audit_log)
+
+        # Registro genérico en audit_logs
+        try:
+            create_audit_log(
+                db=db,
+                actor_id=current_user.id,
+                action='reset_password',
+                object_type='user',
+                object_id=user_id,
+                metadata={"note": "admin_reset"},
+                ip=(request.state.client_ip if request else None)
+            )
+        except Exception:
+            pass
+        
+        db.commit()
+        
+        # Log en el sistema (NO incluir contraseña)
+        logger.info(
+            f"[AUDIT] Admin {current_user.id} ({current_user.username}) "
+            f"reseteó la contraseña del usuario {user_id} ({user.username}) "
+            f"en {datetime.utcnow().isoformat()}"
+        )
+        
+        return PasswordChangeResponse(
+            message=f"Contraseña reseteada exitosamente para el usuario {user.username}",
+            success=True
+        )
 
 @app.post("/forgot-password", tags=["Usuario"])
 async def forgot_password(
@@ -891,7 +1010,7 @@ def read_acta(acta_id: int, db: Session = Depends(get_db)):
     return db_acta
 
 @app.post("/actas", response_model=ActaResponse, status_code=status.HTTP_201_CREATED, tags=["Actas de Entrega Recepción"])
-def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
     """
     Crear una nueva acta de entrega-recepción
     """
@@ -945,6 +1064,38 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: Us
             .filter(ActaEntregaRecepcion.id == db_acta.id)
             .first()
         )
+
+        # Auditoría
+        try:
+            logger.info(f"[AUDIT] Attempting to create audit log for acta {db_acta.id} by actor {current_user.id if current_user else None}")
+            audit_res = create_audit_log(
+                db=db,
+                actor_id=current_user.id if current_user else None,
+                action='create_acta',
+                object_type='acta',
+                object_id=db_acta.id,
+                metadata={'folio': db_acta.folio, 'unidad_responsable': db_acta.unidad_responsable},
+                ip=(request.state.client_ip if request else None)
+            )
+            logger.info(f"[AUDIT] create_audit_log returned: {audit_res}")
+            # Si por alguna razón el helper falló silenciosamente, crear el registro manualmente
+            if audit_res is None:
+                from .models import AuditLog
+                fallback = AuditLog(
+                    actor_id=current_user.id if current_user else None,
+                    action='create_acta',
+                    object_type='acta',
+                    object_id=db_acta.id,
+                    ip_address=(request.state.client_ip if request else None),
+                    metadata_json={'folio': db_acta.folio}
+                )
+                db.add(fallback)
+                db.commit()
+                logger.info(f"[AUDIT] Fallback audit log created for acta {db_acta.id}")
+        except Exception as e:
+            logger.exception(f"Error creating audit log for acta {db_acta.id}: {e}")
+            pass
+
         return db_acta
         
     except HTTPException:
@@ -954,19 +1105,36 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: Us
         raise HTTPException(status_code=500, detail=f"Error al crear acta: {str(e)}")
 
 @app.put("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
-def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db)):
+def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
     db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
-    for key, value in acta.model_dump(exclude_unset=True).items():
+
+    changes = acta.model_dump(exclude_unset=True)
+    for key, value in changes.items():
         setattr(db_acta, key, value)
     db.commit()
     db.refresh(db_acta)
+
+    # Auditoría
+    try:
+        create_audit_log(
+            db=db,
+            actor_id=current_user.id if current_user else None,
+            action='update_acta',
+            object_type='acta',
+            object_id=db_acta.id,
+            metadata={'changes': changes},
+            ip=(request.state.client_ip if request else None)
+        )
+    except Exception:
+        pass
+
     return db_acta
 
 
 @app.delete("/actas/{acta_id}", tags=["Actas de Entrega Recepción"])
-def delete_acta(acta_id: int, db: Session = Depends(get_db)):
+def delete_acta(acta_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
     db_acta = db.query(ActaEntregaRecepcion).filter(
         ActaEntregaRecepcion.id == acta_id
     ).first()
@@ -977,7 +1145,87 @@ def delete_acta(acta_id: int, db: Session = Depends(get_db)):
     # Opción 1: Eliminación real
     db.delete(db_acta)
     db.commit()
+
+    # Auditoría
+    try:
+        create_audit_log(
+            db=db,
+            actor_id=current_user.id if current_user else None,
+            action='delete_acta',
+            object_type='acta',
+            object_id=acta_id,
+            metadata={'folio': db_acta.folio},
+            ip=(request.state.client_ip if request else None)
+        )
+    except Exception:
+        pass
+
     return {"message": "Acta eliminada correctamente"}
+
+# =================================================================================================
+#                                           AUDIT LOGS
+# =================================================================================================
+@app.get('/admin/audit_logs', tags=['Admin', 'Audit'], response_model=dict)
+def get_audit_logs(
+    actor_id: int | None = None,
+    object_type: str | None = None,
+    action: str | None = None,
+    start_ts: str | None = None,
+    end_ts: str | None = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_admin: User = Depends(get_admin_user)
+):
+    """Devuelve logs de auditoría en formato JSON plano con metadatos.
+
+    Filtros soportados: actor_id, object_type, action, start_ts, end_ts, skip, limit
+    """
+    # Permite al admin consultar logs con filtros y devuelve metadata correctamente
+    query = db.query(AuditLog)
+    if actor_id is not None:
+        query = query.filter(AuditLog.actor_id == actor_id)
+    if object_type is not None:
+        query = query.filter(AuditLog.object_type == object_type)
+    if action is not None:
+        query = query.filter(AuditLog.action == action)
+    # start_ts / end_ts aceptan ISO timestamps o fechas
+    if start_ts:
+        try:
+            query = query.filter(AuditLog.timestamp >= start_ts)
+        except Exception:
+            pass
+    if end_ts:
+        try:
+            query = query.filter(AuditLog.timestamp <= end_ts)
+        except Exception:
+            pass
+
+    total = query.count()
+    results = query.order_by(AuditLog.timestamp.desc()).offset(skip).limit(limit).all()
+
+    # Convertir resultados a estructuras JSON serializables
+    from fastapi.encoders import jsonable_encoder
+    items = []
+    for r in results:
+        # metadata_json puede ser JSON o None
+        metadata = None
+        if hasattr(r, 'metadata_json') and r.metadata_json is not None:
+            metadata = r.metadata_json
+        item = {
+            'id': r.id,
+            'actor_id': r.actor_id,
+            'action': r.action,
+            'object_type': r.object_type,
+            'object_id': r.object_id,
+            'timestamp': r.timestamp.isoformat() if r.timestamp else None,
+            'success': r.success,
+            'ip_address': r.ip_address,
+            'metadata': metadata
+        }
+        items.append(item)
+
+    return {"total": total, "items": items}
 
 # =================================================================================================
 #                                   ANEXOS DE ENTREGA RECEPCIÓN
@@ -998,7 +1246,7 @@ def read_anexos(
     
 # add by POST
 @app.post("/anexos", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
+def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
     
     db_anexo = Anexos(clave=anexo.clave,
         creador_id=anexo.creador_id,
@@ -1013,6 +1261,21 @@ def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db)):
     db.add(db_anexo)
     db.commit()
     db.refresh(db_anexo)
+
+    # Auditoría
+    try:
+        create_audit_log(
+            db=db,
+            actor_id=current_user.id if current_user else None,
+            action='create_anexo',
+            object_type='anexo',
+            object_id=db_anexo.id,
+            metadata={'clave': db_anexo.clave, 'unidad_responsable_id': db_anexo.unidad_responsable_id},
+            ip=(request.state.client_ip if request else None)
+        )
+    except Exception:
+        pass
+
     return db_anexo
     
 # get by id
@@ -1025,24 +1288,41 @@ def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
 
 # para actualizar un anexos existente
 @app.put("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
-def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db)):
+def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
     db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
     if not db_anexo:
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
 
+    changes = anexo.model_dump(exclude_unset=True)
+
     # Actualizar campos
-    for key, value in anexo.model_dump(exclude_unset=True).items():
+    for key, value in changes.items():
         setattr(db_anexo, key, value)
 
     db_anexo.actualizado_en = date.today()
     db.commit()
     db.refresh(db_anexo)
+
+    # Auditoría
+    try:
+        create_audit_log(
+            db=db,
+            actor_id=current_user.id if current_user else None,
+            action='update_anexo',
+            object_type='anexo',
+            object_id=db_anexo.id,
+            metadata={'changes': changes},
+            ip=(request.state.client_ip if request else None)
+        )
+    except Exception:
+        pass
+
     return db_anexo
 
 
 # marcar un anexo como eliminado
 @app.delete("/anexos/{anexo_id}", tags=["Anexos de Entrega Recepción"])
-def delete_anexo(anexo_id: int, db: Session = Depends(get_db)):
+def delete_anexo(anexo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
     db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
     if not db_anexo:
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
@@ -1050,6 +1330,21 @@ def delete_anexo(anexo_id: int, db: Session = Depends(get_db)):
     db_anexo.is_deleted = True
     db_anexo.actualizado_en = date.today()
     db.commit()
+
+    # Auditoría
+    try:
+        create_audit_log(
+            db=db,
+            actor_id=current_user.id if current_user else None,
+            action='delete_anexo',
+            object_type='anexo',
+            object_id=anexo_id,
+            metadata={'clave': db_anexo.clave},
+            ip=(request.state.client_ip if request else None)
+        )
+    except Exception:
+        pass
+
     return {"message": "Anexo eliminado correctamente"}
 
 # endpont para obtener anexos por clave
