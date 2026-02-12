@@ -98,22 +98,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 origins = [
-    "*",
-    "http://localhost",
-    "http://localhost:5173",  # Asumiendo que tu front corre aquí
-    "http://localhost:3000", # Si tienes otro puerto o dominio para el front
-    "https://entrega-recepcion-frontend-82zrt1b9a.vercel.app/",
-    "https://entrega-recepcion-git-91bd1d-utm221001tim-ut-moreliaes-projects.vercel.app/"
+    "https://entrega-recepcion-frontend.vercel.app",
+    "https://entrega-recepcion.umich.mx",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
-# Configuración de CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",  # Localhost con cualquier puerto
-    allow_origins=["*"],  # Permite todos los orígenes TEMPORALMENTE
+    allow_origins=origins,      # <-- NO "*"
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
 # Middleware para capturar IP y user-agent (disponible en request.state.client_ip)
