@@ -23,10 +23,10 @@ from .auth import (
 )
 from .audit import create_audit_log
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-from .models import Anexos, User, UserRoles, UnidadResponsable, PasswordAuditLog, AuditLog
+from .models import Anexos, User, UserRoles, UnidadResponsable, PasswordAuditLog, AuditLog, Cargo, UserCargoHistorial
 from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, ChangePasswordRequest, UserResponse, AnexoUpdate, ResetPasswordRequest, PasswordChangeResponse
 from .models import ActaEntregaRecepcion
-from .schemas import AnexoCreate, AnexoResponse
+from .schemas import AnexoCreate, AnexoResponse, CargoCreate, CargoResponse, UserCargoHistorialCreate, UserCargoHistorialResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -284,9 +284,18 @@ def read_user(
     # current_user: User = Depends(get_current_user)
     ):
     with session_scope() as db:
-        user = db.query(User).filter(User.id == user_id, User.is_deleted == False).first()
+        # cargar unidad + cargos actuales (evitar N+1)
+        user = db.query(User).options(
+            joinedload(User.unidad),
+            selectinload(User.cargos_historial).joinedload(UserCargoHistorial.cargo)
+        ).filter(User.id == user_id, User.is_deleted == False).first()
         if user is None:
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+        # construir cargos_actuales filtrando las relaciones cargadas
+        cargos_act = [h for h in (user.cargos_historial or []) if (h.fecha_fin is None and not h.is_deleted)]
+        # adjuntar para que el schema los serialice
+        user.cargos_actuales = cargos_act
         return jsonable_encoder(user)
 
 @app.delete("/users/{user_id}", tags=["Usuario"])
@@ -919,6 +928,258 @@ def read_unidades(db: Session = Depends(get_db)):
             status_code=500,
             detail=f"Error al obtener unidades: {str(e)}"
         )
+
+
+# =================================================================================================
+#                                           CARGOS
+# =================================================================================================
+@app.get("/cargos", response_model=List[CargoResponse], tags=["Cargos"])
+def read_cargos(skip: int = 0, limit: int = 1000, db: Session = Depends(get_db)):
+    cargos = db.query(Cargo).filter(Cargo.is_deleted == False).offset(skip).limit(limit).all()
+    return cargos
+
+
+@app.get("/cargos/{cargo_id}", response_model=CargoResponse, tags=["Cargos"])
+def get_cargo(cargo_id: int, db: Session = Depends(get_db)):
+    c = db.query(Cargo).filter(Cargo.id == cargo_id, Cargo.is_deleted == False).first()
+    if not c:
+        raise HTTPException(status_code=404, detail="Cargo no encontrado")
+    return c
+
+
+@app.post("/cargos", response_model=CargoResponse, tags=["Cargos"])
+def create_cargo(cargo: CargoCreate, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    # Verificar unicidad
+    existing = db.query(Cargo).filter(Cargo.nombre == cargo.nombre, Cargo.is_deleted == False).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Ya existe un cargo con ese nombre")
+    db_obj = Cargo(**cargo.model_dump(exclude_unset=True))
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+    try:
+        create_audit_log(db=db, actor_id=current_admin.id, action='create_cargo', object_type='cargo', object_id=db_obj.id, metadata={'nombre': db_obj.nombre})
+    except Exception:
+        pass
+    return db_obj
+
+
+@app.put("/cargos/{cargo_id}", response_model=CargoResponse, tags=["Cargos"])
+def update_cargo(cargo_id: int, cargo: CargoCreate, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    db_obj = db.query(Cargo).filter(Cargo.id == cargo_id, Cargo.is_deleted == False).first()
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Cargo no encontrado")
+    changes = cargo.model_dump(exclude_unset=True)
+    for k, v in changes.items():
+        setattr(db_obj, k, v)
+    db.commit()
+    db.refresh(db_obj)
+    try:
+        create_audit_log(db=db, actor_id=current_admin.id, action='update_cargo', object_type='cargo', object_id=db_obj.id, metadata={'changes': changes})
+    except Exception:
+        pass
+    return db_obj
+
+
+@app.delete("/cargos/{cargo_id}", tags=["Cargos"])
+def delete_cargo(cargo_id: int, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    db_obj = db.query(Cargo).filter(Cargo.id == cargo_id, Cargo.is_deleted == False).first()
+    if not db_obj:
+        raise HTTPException(status_code=404, detail="Cargo no encontrado")
+    db_obj.is_deleted = True
+    db.commit()
+    try:
+        create_audit_log(db=db, actor_id=current_admin.id, action='delete_cargo', object_type='cargo', object_id=cargo_id)
+    except Exception:
+        pass
+    return {"message": "Cargo eliminado (soft-delete)"}
+
+
+# =================================================================================================
+#                               HISTORIAL DE CARGOS (user_cargo_historial)
+# =================================================================================================
+@app.get("/user_cargo_historial", response_model=List[UserCargoHistorialResponse], tags=["Cargos"])
+def read_user_cargo_historial(
+    user_id: int | None = None,
+    cargo_id: int | None = None,
+    unidad_responsable_id: int | None = None,
+    skip: int = 0,
+    limit: int = 1000,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    # Permisos: admin puede ver todo; usuario normal solo su propio historial
+    if current_user.role != UserRoles.ADMIN and user_id and user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para ver este historial")
+
+    q = db.query(UserCargoHistorial).filter(UserCargoHistorial.is_deleted == False)
+    if user_id:
+        q = q.filter(UserCargoHistorial.user_id == user_id)
+    if cargo_id:
+        q = q.filter(UserCargoHistorial.cargo_id == cargo_id)
+    if unidad_responsable_id:
+        q = q.filter(UserCargoHistorial.unidad_responsable_id == unidad_responsable_id)
+
+    items = q.offset(skip).limit(limit).all()
+    return items
+
+
+@app.get("/user_cargo_historial/{hist_id}", response_model=UserCargoHistorialResponse, tags=["Cargos"])
+def get_user_cargo_historial(hist_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    entry = db.query(UserCargoHistorial).filter(UserCargoHistorial.id == hist_id, UserCargoHistorial.is_deleted == False).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    if current_user.role != UserRoles.ADMIN and entry.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="No tienes permiso para ver este registro")
+    return entry
+
+
+@app.post("/user_cargo_historial", response_model=UserCargoHistorialResponse, tags=["Cargos"])
+def create_user_cargo_historial(payload: UserCargoHistorialCreate, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    # Validaciones FK (pre-checks)
+    cargo = db.query(Cargo).filter(Cargo.id == payload.cargo_id, Cargo.is_deleted == False).first()
+    if not cargo:
+        raise HTTPException(status_code=400, detail="Cargo no existente")
+    user = db.query(User).filter(User.id == payload.user_id, User.is_deleted == False).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Usuario no existente")
+    unidad = db.query(UnidadResponsable).filter(UnidadResponsable.id_unidad == payload.unidad_responsable_id).first()
+    if not unidad:
+        raise HTTPException(status_code=400, detail="Unidad responsable no existente")
+
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy import select
+
+    # Transacción con bloqueo para evitar condiciones de carrera
+    try:
+        # bloquear fila de cargo y de unidad para sincronizar concurrentes
+        db.execute(select(Cargo).where(Cargo.id == payload.cargo_id).with_for_update(of=Cargo))
+        # lock only the `unidades_responsables` table — avoid FOR UPDATE on outer joins
+        db.execute(select(UnidadResponsable).where(UnidadResponsable.id_unidad == payload.unidad_responsable_id).with_for_update(of=UnidadResponsable))
+
+        # comprobar asignación activa
+        active = db.query(UserCargoHistorial).filter(
+            UserCargoHistorial.cargo_id == payload.cargo_id,
+            UserCargoHistorial.unidad_responsable_id == payload.unidad_responsable_id,
+            UserCargoHistorial.fecha_fin == None,
+            UserCargoHistorial.is_deleted == False
+        ).with_for_update(of=UserCargoHistorial, read=True).first()
+
+        if active:
+            raise HTTPException(status_code=409, detail="Ya existe una asignación activa para ese cargo y unidad")
+
+        db_obj = UserCargoHistorial(**payload.model_dump(exclude_unset=True))
+        db.add(db_obj)
+        db.commit()
+        db.refresh(db_obj)
+
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Conflicto al crear la asignación (posible asignación concurrente)")
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creando asignación: {e}")
+
+    # Audit
+    try:
+        create_audit_log(db=db, actor_id=current_admin.id, action='create_user_cargo_historial', object_type='user_cargo_historial', object_id=db_obj.id, metadata={'cargo_id': db_obj.cargo_id, 'user_id': db_obj.user_id})
+    except Exception:
+        pass
+
+    return db_obj
+
+
+@app.put("/user_cargo_historial/{hist_id}", response_model=UserCargoHistorialResponse, tags=["Cargos"])
+def update_user_cargo_historial(hist_id: int, payload: UserCargoHistorialCreate, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    entry = db.query(UserCargoHistorial).filter(UserCargoHistorial.id == hist_id, UserCargoHistorial.is_deleted == False).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    changes = payload.model_dump(exclude_unset=True)
+    for k, v in changes.items():
+        setattr(entry, k, v)
+    db.commit()
+    db.refresh(entry)
+    try:
+        create_audit_log(db=db, actor_id=current_admin.id, action='update_user_cargo_historial', object_type='user_cargo_historial', object_id=entry.id, metadata={'changes': changes})
+    except Exception:
+        pass
+    return entry
+
+
+@app.delete("/user_cargo_historial/{hist_id}", tags=["Cargos"])
+def delete_user_cargo_historial(hist_id: int, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    entry = db.query(UserCargoHistorial).filter(UserCargoHistorial.id == hist_id, UserCargoHistorial.is_deleted == False).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Registro no encontrado")
+    entry.is_deleted = True
+    db.commit()
+    try:
+        create_audit_log(db=db, actor_id=current_admin.id, action='delete_user_cargo_historial', object_type='user_cargo_historial', object_id=hist_id)
+    except Exception:
+        pass
+    return {"message": "Historial marcado como eliminado"}
+
+
+# -----------------------------------------------------------------------------
+# Endpoints auxiliares para asignación/desasignación por conveniencia (wrap)
+# -----------------------------------------------------------------------------
+from pydantic import BaseModel as PydanticBaseModel
+
+class CargoAssignPayload(PydanticBaseModel):
+    cargo_id: int
+    user_id: int
+    unidad_responsable_id: int
+    motivo: str | None = None
+
+class CargoUnassignPayload(PydanticBaseModel):
+    hist_id: int | None = None
+    cargo_id: int | None = None
+    unidad_responsable_id: int | None = None
+
+
+@app.post("/cargos/asignar", response_model=UserCargoHistorialResponse, tags=["Cargos"], summary="Asignar cargo a usuario (transaccional)")
+def asignar_cargo_api(payload: CargoAssignPayload, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    # Reuse transactional logic from create_user_cargo_historial
+    body = UserCargoHistorialCreate(
+        cargo_id=payload.cargo_id,
+        user_id=payload.user_id,
+        unidad_responsable_id=payload.unidad_responsable_id,
+        motivo=payload.motivo
+    )
+    return create_user_cargo_historial(body, db=db, current_admin=current_admin)
+
+
+@app.post("/cargos/desasignar", tags=["Cargos"], summary="Finalizar asignación activa (set fecha_fin)")
+def desasignar_cargo_api(payload: CargoUnassignPayload, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
+    from sqlalchemy import select
+    # determinar el registro a cerrar
+    if payload.hist_id:
+        entry = db.query(UserCargoHistorial).filter(UserCargoHistorial.id == payload.hist_id, UserCargoHistorial.is_deleted == False).first()
+        if not entry:
+            raise HTTPException(status_code=404, detail="Historial no encontrado")
+    else:
+        if not (payload.cargo_id and payload.unidad_responsable_id):
+            raise HTTPException(status_code=400, detail="Proporciona hist_id o (cargo_id + unidad_responsable_id)")
+        entry = db.query(UserCargoHistorial).filter(
+            UserCargoHistorial.cargo_id == payload.cargo_id,
+            UserCargoHistorial.unidad_responsable_id == payload.unidad_responsable_id,
+            UserCargoHistorial.fecha_fin == None,
+            UserCargoHistorial.is_deleted == False
+        ).first()
+        if not entry:
+            raise HTTPException(status_code=404, detail="No existe una asignación activa para ese cargo/unidad")
+
+    # cerrar asignación
+    entry.fecha_fin = datetime.utcnow()
+    db.commit()
+    try:
+        create_audit_log(db=db, actor_id=current_admin.id, action='cargo_unassign', object_type='user_cargo_historial', object_id=entry.id, metadata={'cargo_id': entry.cargo_id, 'user_id': entry.user_id, 'unidad_responsable_id': entry.unidad_responsable_id})
+    except Exception:
+        pass
+    return {"message": "Asignación finalizada", "hist_id": entry.id}
+
 
 @app.get(
     "/unidades_responsables/{unidad_id}",

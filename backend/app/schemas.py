@@ -77,8 +77,9 @@ class UnidadResponsableSimple(BaseModel):
     id_unidad: int
     nombre: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
+
 
 
 # =================================================================================================
@@ -95,11 +96,7 @@ class AuditLogResponse(BaseModel):
     ip_address: Optional[str] = None
     metadata: Optional[dict] = None
 
-    class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
+    model_config = ConfigDict(from_attributes=True, json_encoders={datetime: lambda v: v.isoformat() if v else None})
 
 # Esquema para respuesta (sin password)
 class UserResponse(UserBase):
@@ -112,11 +109,9 @@ class UserResponse(UserBase):
     reset_token_expiration: Optional[datetime] = None
     # incluir la unidad responsable si existe
     unidad_responsable: Optional[UnidadResponsableSimple] = None
+    cargos_actuales: Optional[List["UserCargoHistorialResponse"]] = Field(default_factory=list)
 
-    __allow_unmapped_fields__ = True
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True, extra="allow", json_encoders={datetime: lambda v: v.isoformat() if v else None})
 
 # Esquema para actualización (todos los campos opcionales)
 class UserUpdate(BaseModel):
@@ -152,8 +147,7 @@ class UnidadResponsableBase(BaseModel):
     def tranform_responsable(cls, v):
         # si el valor es un ID numerico, se convierte a None
         return None if isinstance(v, int) else v
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Esquema para creación de Unidad Responsable
 class UnidadResponsableCreate(UnidadResponsableBase):
@@ -173,8 +167,7 @@ class UnidadResponsableUpdate(BaseModel):
     tipo_unidad: Optional[str] = None
     unidad_padre_id: Optional[int] = None
     responsable_id: Optional[int] = None
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Esquema para respuesta de Unidad Responsable
 # (AnexoResponse movido a la sección de ANEXOS)
@@ -195,19 +188,14 @@ class UnidadResponsableResponse(BaseModel):
     responsable: Optional[UserBase] = None  # Asegúrate que UserBase esté bien definido
     dependientes: List[UnidadResponsableBase] = Field(default_factory=list)  # Usa Field para listas
     
-    class Config:
-        orm_mode = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None
-        }
+    model_config = ConfigDict(from_attributes=True, json_encoders={datetime: lambda v: v.isoformat() if v else None})
 
 class ResponsableResumen(BaseModel):
     id: int
     username: str
     email: str
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UnidadJerarquicaResponse(BaseModel):
     id_unidad: int
@@ -216,8 +204,7 @@ class UnidadJerarquicaResponse(BaseModel):
     nivel: int
     responsable: Optional[ResponsableResumen]
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # =================================================================================================
 #                                           ANEXOS
@@ -254,12 +241,56 @@ class AnexoResponse(AnexoBase):
     creado_en: date
     actualizado_en: date
 
-    class Config:
-        from_attributes = True
-        json_encoders= {
-            datetime: lambda v: v.isoformat() if v else None,
-            date: lambda v: v.isoformat() if v else None,
-        }
+    model_config = ConfigDict(from_attributes=True, json_encoders={datetime: lambda v: v.isoformat() if v else None, date: lambda v: v.isoformat() if v else None})
+
+
+# =================================================================================================
+#                                           CARGOS
+# =================================================================================================
+class CargoBase(BaseModel):
+    id: Optional[int] = None
+    nombre: str
+    descripcion: Optional[str] = None
+    activo: Optional[bool] = True
+    creado_en: Optional[datetime] = None
+    actualizado_en: Optional[datetime] = None
+    is_deleted: Optional[bool] = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+class CargoCreate(CargoBase):
+    nombre: str
+
+class CargoResponse(CargoBase):
+    id: int
+
+    model_config = ConfigDict(from_attributes=True, json_encoders={datetime: lambda v: v.isoformat() if v else None})
+
+
+class UserCargoHistorialBase(BaseModel):
+    id: Optional[int] = None
+    cargo_id: int
+    user_id: int
+    unidad_responsable_id: int
+    fecha_inicio: Optional[datetime] = None
+    fecha_fin: Optional[datetime] = None
+    asignado_por_user_id: Optional[int] = None
+    motivo: Optional[str] = None
+    creado_en: Optional[datetime] = None
+    actualizado_en: Optional[datetime] = None
+    is_deleted: Optional[bool] = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+class UserCargoHistorialCreate(UserCargoHistorialBase):
+    cargo_id: int
+    user_id: int
+    unidad_responsable_id: int
+
+class UserCargoHistorialResponse(UserCargoHistorialBase):
+    id: int
+    cargo: Optional[CargoResponse] = None
+    model_config = ConfigDict(from_attributes=True)
 
 # =================================================================================================
 #                                ACTAS DE ENTREGA-RECEPCIÓN
@@ -332,16 +363,12 @@ class ActaResponse(BaseModel):
     actualizado_en: Optional[datetime] = None
     anexos: Optional[List[AnexoResponse]] = None  # ← Anexos relacionados
 
-    class Config:
-        from_attributes = True
-
-# Schema para respuesta con datos de unidad
+    model_config = ConfigDict(from_attributes=True)
 class ActaWithUnidadResponse(ActaResponse):
     unidad_nombre: Optional[str] = None
     unidad_descripcion: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ActaUpdate(BaseModel):
     unidad_responsable: Optional[int] = None

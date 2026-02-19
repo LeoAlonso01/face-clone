@@ -9,9 +9,9 @@ from sqlalchemy import Boolean
 from enum import Enum as PyEnum
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
-from sqlalchemy.ext.declarative import declarative_base
+""" from sqlalchemy.ext.declarative import declarative_base
 
-Base = declarative_base()
+Base = declarative_base() """
 
 def utcnow():
     return datetime.now() 
@@ -64,6 +64,26 @@ class User(Base):
     role = Column(Enum(UserRoles), default=UserRoles.USER, nullable=True)
     # relaciones
     unidad = relationship("UnidadResponsable", back_populates="usuario_responsable", uselist=False)
+
+    # Historial de cargos (relación principal)
+    cargos_historial = relationship(
+        "UserCargoHistorial",
+        foreign_keys="UserCargoHistorial.user_id",
+        back_populates="user",
+        lazy="selectin"
+    )
+    cargos_asignados = relationship(
+        "UserCargoHistorial",
+        foreign_keys="UserCargoHistorial.asignado_por_user_id",
+        back_populates="asignado_por",
+        lazy="selectin"
+    )
+
+    # Propiedad calculada para cargos activos (fecha_fin IS NULL and not deleted)
+    @property
+    def cargos_actuales(self):
+        return [h for h in (self.cargos_historial or []) if (h.fecha_fin is None and not h.is_deleted)]
+
     # recuperacion de contraseña
     reset_token = Column(String, nullable=True)
     reset_token_expiration = Column(DateTime, nullable=True)
@@ -135,9 +155,6 @@ class UnidadResponsable(Base):
     # 👉 RELACIÓN CON ANEXOS (esto es lo nuevo)
     anexos = relationship("Anexos", back_populates="unidad_responsable")
 
-    class Config:
-        orm_mode = True
-
 
 # esquema para el acta entrega-recepción
 class ActaEntregaRecepcion(Base):
@@ -202,6 +219,51 @@ class Anexos(Base):
     # Relación con Acta
     acta_id = Column(Integer, ForeignKey("acta_entrega_recepcion.id"), nullable=True)
     acta = relationship("ActaEntregaRecepcion", back_populates="anexos")
+
+
+# ===================== CARGOS / HISTORIAL DE CARGOS =====================
+class Cargo(Base):
+    __tablename__ = "cargos"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String(80), nullable=False, unique=True)
+    descripcion = Column(Text, nullable=True)
+    activo = Column(Boolean, default=True)
+    creado_en = Column(DateTime, server_default=func.now())
+    actualizado_en = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    is_deleted = Column(Boolean, default=False)
+
+    historiales = relationship(
+        "UserCargoHistorial",
+        back_populates="cargo",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+
+class UserCargoHistorial(Base):
+    __tablename__ = "user_cargo_historial"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cargo_id = Column(Integer, ForeignKey("cargos.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    unidad_responsable_id = Column(Integer, ForeignKey("unidades_responsables.id_unidad"), nullable=False)
+
+    fecha_inicio = Column(DateTime, server_default=func.now())
+    fecha_fin = Column(DateTime, nullable=True)
+
+    asignado_por_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    motivo = Column(Text, nullable=True)
+
+    creado_en = Column(DateTime, server_default=func.now())
+    actualizado_en = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    is_deleted = Column(Boolean, default=False)
+
+    # Relaciones
+    cargo = relationship("Cargo", back_populates="historiales", lazy="joined")
+    user = relationship("User", foreign_keys=[user_id], back_populates="cargos_historial")
+    unidad = relationship("UnidadResponsable", foreign_keys=[unidad_responsable_id], lazy="joined")
+    asignado_por = relationship("User", foreign_keys=[asignado_por_user_id], back_populates="cargos_asignados")
 
 
 
