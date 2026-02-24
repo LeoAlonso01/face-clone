@@ -82,7 +82,14 @@ class User(Base):
     # Propiedad calculada para cargos activos (fecha_fin IS NULL and not deleted)
     @property
     def cargos_actuales(self):
-        return [h for h in (self.cargos_historial or []) if (h.fecha_fin is None and not h.is_deleted)]
+        return [
+            h for h in (self.cargos_historial or []) 
+            if (h.fecha_fin is None and not h.is_deleted)]
+    
+    @cargos_actuales.setter
+    def cargos_actuales(self, value):
+        # Este setter no se usará directamente, pero lo dejamos para evitar errores de asignación
+        pass
 
     # recuperacion de contraseña
     reset_token = Column(String, nullable=True)

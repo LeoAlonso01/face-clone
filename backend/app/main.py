@@ -271,32 +271,44 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @app.get("/users", response_model=list[UserResponse], tags=["Usuario"])
 def get_users(skip: int = 0, 
-        limit: int = 1000, 
+        limit: int = 1000,
+        db: Session = Depends(get_db), 
         #current_user: User = Depends(get_current_user)
         ):
-    with session_scope() as db:
-        users = db.query(User).filter(User.is_deleted == False).offset(skip).limit(limit).all()
-        return jsonable_encoder(users)
+    users = (
+        db.query(User)
+        .filter(User.is_deleted == False)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    # forzar normalizacion hacia el schema UserResponse (evitar problemas de serialización con objetos SQLAlchemy)
+    return [UserResponse.model_validate(u) for u in users]
 
-@app.get("/users/{user_id}", tags=["Usuario"])
-def read_user(
-    user_id: int, 
-    # current_user: User = Depends(get_current_user)
-    ):
-    with session_scope() as db:
-        # cargar unidad + cargos actuales (evitar N+1)
-        user = db.query(User).options(
+@app.get("/users/{user_id}", response_model=UserResponse, tags=["Usuario"])
+def read_user(user_id: int, db: Session = Depends(get_db)):
+    user = (
+        db.query(User)
+        .options(
             joinedload(User.unidad),
-            selectinload(User.cargos_historial).joinedload(UserCargoHistorial.cargo)
-        ).filter(User.id == user_id, User.is_deleted == False).first()
-        if user is None:
-            raise HTTPException(status_code=404, detail="Usuario no encontrado")
+            selectinload(User.cargos_historial).joinedload(UserCargoHistorial.cargo),
+        )
+        .filter(User.id == user_id, User.is_deleted == False)
+        .first()
+    )
 
-        # construir cargos_actuales filtrando las relaciones cargadas
-        cargos_act = [h for h in (user.cargos_historial or []) if (h.fecha_fin is None and not h.is_deleted)]
-        # adjuntar para que el schema los serialice
-        user.cargos_actuales = cargos_act
-        return jsonable_encoder(user)
+    if user is None:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    cargos_act = [
+        h for h in (user.cargos_historial or [])
+        if (h.fecha_fin is None and not h.is_deleted)
+    ]
+    user.cargos_actuales = cargos_act
+
+    return user
+
+
 
 @app.delete("/users/{user_id}", tags=["Usuario"])
 def soft_delete_user(user_id: int, current_user: User = Depends(get_admin_user)):
@@ -1186,14 +1198,45 @@ def desasignar_cargo_api(payload: CargoUnassignPayload, db: Session = Depends(ge
     response_model=UnidadResponsableResponse,
     tags=["Unidades Responsables"]
 )
-def get_unidad(
-    unidad_id: int,
-    db: Session = Depends(get_db)
-):
-    db_unidad = db.query(UnidadResponsable).filter(UnidadResponsable.id_unidad == unidad_id).first()
-    if not db_unidad:
+def get_unidad(unidad_id: int, db: Session = Depends(get_db)):
+    unidad = (
+        db.query(UnidadResponsable)
+        .options(joinedload(UnidadResponsable.usuario_responsable))
+        .filter(UnidadResponsable.id_unidad == unidad_id)
+        .first()
+    )
+    if not unidad:
         raise HTTPException(status_code=404, detail="Unidad no encontrada")
-    return db_unidad
+
+    # arma objeto embebido si existe
+    resp_obj = None
+    if unidad.usuario_responsable:
+        resp_obj = UserResponse(
+            id=unidad.usuario_responsable.id,
+            username=unidad.usuario_responsable.username,
+            email=unidad.usuario_responsable.email,
+            role=unidad.usuario_responsable.role,
+            is_deleted=unidad.usuario_responsable.is_deleted,
+        )
+
+    # ⚠️ importante: no sobrescribas unidad.responsable con objeto si tu modelo lo usa como int.
+    # devuelve un dict compatible con schema:
+    return {
+        "id_unidad": unidad.id_unidad,
+        "nombre": unidad.nombre,
+        "telefono": unidad.telefono,
+        "domicilio": unidad.domicilio,
+        "municipio": unidad.municipio,
+        "localidad": unidad.localidad,
+        "codigo_postal": unidad.codigo_postal,
+        "rfc": unidad.rfc,
+        "correo_electronico": unidad.correo_electronico,
+        "tipo_unidad": unidad.tipo_unidad,
+        "fecha_creacion": unidad.fecha_creacion,
+        "unidad_padre_id": unidad.unidad_padre_id,
+        "responsable_id": unidad.responsable,   # int
+        "responsable": resp_obj,                # objeto o None
+    }
 
 @app.put(
     "/unidades_responsables/{unidad_id}/asignar-responsable",

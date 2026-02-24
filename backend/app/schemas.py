@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, date, time
 from sqlalchemy import Enum as PythonEnum
 from enum import Enum as SQLEnum
+from pydantic import Field
 
 
 class UserRoles(str, SQLEnum):
@@ -108,10 +109,15 @@ class UserResponse(UserBase):
     reset_token: Optional[str] = None
     reset_token_expiration: Optional[datetime] = None
     # incluir la unidad responsable si existe
-    unidad_responsable: Optional[UnidadResponsableSimple] = None
+    unidad_responsable: Optional[UnidadResponsableSimple] = Field(default=None, validation_alias="unidad", serialization_alias="unidad_responsable")
     cargos_actuales: Optional[List["UserCargoHistorialResponse"]] = Field(default_factory=list)
 
-    model_config = ConfigDict(from_attributes=True, extra="allow", json_encoders={datetime: lambda v: v.isoformat() if v else None})
+    model_config = ConfigDict(
+    from_attributes=True,
+    populate_by_name=True,
+    extra="allow",
+    json_encoders={datetime: lambda v: v.isoformat() if v else None}
+)
 
 # Esquema para actualización (todos los campos opcionales)
 class UserUpdate(BaseModel):
@@ -172,6 +178,14 @@ class UnidadResponsableUpdate(BaseModel):
 # Esquema para respuesta de Unidad Responsable
 # (AnexoResponse movido a la sección de ANEXOS)
 
+
+class UserMiniResponse(BaseModel):
+    id: int
+    username: str
+    email: Optional[str] = None
+    role: Optional[str] = None
+
+    
 class UnidadResponsableResponse(BaseModel):
     id_unidad: int
     nombre: str
@@ -184,10 +198,14 @@ class UnidadResponsableResponse(BaseModel):
     correo_electronico: Optional[str] = None
     tipo_unidad: Optional[str] = None
     fecha_creacion: Optional[datetime] = None
-    fecha_cambio: Optional[datetime] = None
-    responsable: Optional[UserBase] = None  # Asegúrate que UserBase esté bien definido
+    fecha_cambio: Optional[datetime] = None  
     dependientes: List[UnidadResponsableBase] = Field(default_factory=list)  # Usa Field para listas
     
+    # FK para evitar problemas de serialización con el responsable
+    responsable_id: Optional[int] = None
+
+    # objeto embebido para el responsable, solo con id, username y email para evitar problemas de serialización
+    responsable: Optional[UserMiniResponse] = None  # Asegúrate que UserMiniResponse esté bien definido
     model_config = ConfigDict(from_attributes=True, json_encoders={datetime: lambda v: v.isoformat() if v else None})
 
 class ResponsableResumen(BaseModel):
@@ -401,5 +419,3 @@ class ActaUpdate(BaseModel):
     creado_en: Optional[datetime] = None
     actualizado_en: Optional[datetime] = None
    
-
-
