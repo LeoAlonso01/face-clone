@@ -1,4 +1,10 @@
-__pycache__/
+# ignorar el cronjob de backup
+backup_postgres.sh
+backup_postgres.sh.bak
+backup_test.sql
+backups
+
+/__pycache__/
 *.pyc
 
 
