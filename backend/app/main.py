@@ -1405,10 +1405,20 @@ def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: Us
         raise HTTPException(status_code=500, detail=f"Error al crear acta: {str(e)}")
 
 @app.put("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
-def update_acta(acta_id: int, acta: ActaUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
+def update_acta(
+    acta_id: int, 
+    acta: ActaUpdate, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_current_user), 
+    request: Request = None):
     db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
+    if db_acta.estado != "Borrador":
+        raise HTTPException(
+            status_code=400,
+            detail="El acta no puede modificarse después de creada"
+        )
 
     changes = acta.model_dump(exclude_unset=True)
     for key, value in changes.items():
