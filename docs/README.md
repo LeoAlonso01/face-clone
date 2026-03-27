@@ -91,5 +91,85 @@ Una vez ejecutada la aplicación, accede a:
 
 Para reportar issues o solicitar características, contactar al equipo de desarrollo.
 
+## 🏢 Contexto Institucional
+
+SERUMICH V2.0 es un sistema en producción utilizado por la Universidad Michoacana de San Nicolás de Hidalgo para la gestión de procesos de entrega-recepción entre dependencias.
+
+El sistema permite registrar y auditar información crítica, garantizando trazabilidad, transparencia y control administrativo.
+
 ---
-*Última actualización: Enero 2026*
+
+## 🏗️ Arquitectura del Sistema
+
+El sistema sigue una arquitectura basada en API REST:
+
+- **Frontend**: Next.js + TypeScript
+- **Backend**: FastAPI
+- **Base de Datos**: PostgreSQL
+- **Infraestructura**: Docker
+
+### Flujo general:
+
+Usuario → Frontend → API FastAPI → PostgreSQL
+
+---
+
+## 🔄 Flujo Principal
+
+1. Usuario inicia sesión
+2. Gestiona su unidad responsable
+3. Crea actas de entrega-recepción
+4. Adjunta anexos
+5. Sistema registra auditoría automáticamente
+
+---
+
+## 📌 Estado del Proyecto
+
+- ✅ Sistema en producción
+- ✅ Usuarios reales activos
+- 🔄 En mejora continua
+
+---
+
+## 🧠 Mantenimiento y Continuidad
+
+Este sistema está diseñado para ser mantenido por futuros desarrolladores.  
+Se recomienda:
+
+- Revisar documentación en `/docs`
+- Usar migraciones con Alembic
+- Mantener control de versiones
+
+## Diagrama
+
+┌──────────────────────┐
+│      USUARIO         │
+└─────────┬────────────┘
+          │
+          ▼
+┌──────────────────────┐
+│   FRONTEND (Next.js) │
+│   TypeScript         │
+└─────────┬────────────┘
+          │ API REST
+          ▼
+┌──────────────────────┐
+│   BACKEND (FastAPI)  │
+│   Autenticación JWT  │
+│   Lógica de negocio  │
+└─────────┬────────────┘
+          │ ORM (SQLAlchemy)
+          ▼
+┌──────────────────────┐
+│   PostgreSQL DB      │
+│   Actas / Anexos     │
+│   Usuarios / Logs    │
+└──────────────────────┘
+
+## Flujo de operacion
+
+Login → Token JWT → Crear Acta → Agregar Anexos → Guardar → Auditoría
+
+---
+*Última actualización: Marzo 2026*

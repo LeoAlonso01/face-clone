@@ -639,119 +639,79 @@ def create_unidades_responsables(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tienes permiso para crear unidades responsables"
         )
-    #solo avisar que no tiene responsable se le asigna despues 
-    if unidad.responsable is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se puede asignar un responsable al crear una unidad, asigna el responsable despues"
-        )
-    # Verificar que la unidad padre existe si se proporciona
-    if unidad.unidad_padre_id:
-        parent_unidad = db.query(UnidadResponsable).filter(UnidadResponsable.id_unidad == unidad.unidad_padre_id).first()
-        if not parent_unidad:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Unidad padre no encontrada"
-            )
-    # Verificar que el nombre de la unidad no está vacío
+
+    # Validaciones de campos obligatorios mínimos
     if not unidad.nombre:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El nombre de la unidad es obligatorio"
         )
-    # verificar que el id de unidad padre no es igual a la unidad misma
-    if unidad.unidad_padre_id == unidad.id_unidad:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La unidad no puede ser su propia unidad padre"
-        )
-    # verificar que la unida id sea consecutiva al ultimo id de unidad
-    last_unidad = db.query(UnidadResponsable).order_by(UnidadResponsable.id_unidad.desc()).first()
-    if last_unidad and unidad.id_unidad <= last_unidad.id_unidad:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El ID de la unidad debe ser mayor que el último ID registrado"
-        )
 
-    # Verificar que el RFC es válido si se proporciona
-    if unidad.rfc and len(unidad.rfc) != 13:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El RFC debe tener 13 caracteres"
-        )
-    
-    # Verificar que el correo electrónico es válido si se proporciona
-    if unidad.correo_electronico and "@" not in unidad.correo_electronico:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El correo electrónico debe ser válido"
-        )
-    # Verificar que el código postal es válido si se proporciona
-    if unidad.codigo_postal and len(unidad.codigo_postal) != 5:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El código postal debe tener 5 caracteres"
-        )
-    # Verificar que el teléfono es válido si se proporciona
-    if unidad.telefono and len(unidad.telefono) < 10:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El teléfono debe tener al menos 10 caracteres"
-        )
-    # verificar que los campos opcionales si estan vacios se avise que se llene despues
-    if not unidad.domicilio:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El domicilio es opcional, pero se recomienda llenarlo"
-        )
-    if not unidad.municipio:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El municipio es opcional, pero se recomienda llenarlo"
-        )
-    if not unidad.localidad:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La localidad es opcional, pero se recomienda llenarlo"
-        )
     if not unidad.tipo_unidad:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="El tipo de unidad es opcional, pero se recomienda llenarlo"
+            detail="El tipo de unidad es obligatorio"
         )
-    # Crear la unidad responsable
-    if unidad.responsable is not None:
+
+    if unidad.unidad_padre_id is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No se puede asignar un responsable al crear una unidad, asigna el responsable despues"
+            detail="La unidad padre es obligatoria"
         )
-    if unidad.unidad_padre_id is not None and unidad.unidad_padre_id == unidad.id_unidad:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La unidad no puede ser su propia unidad padre"
-        )
+
     if unidad.id_unidad is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No se puede asignar un ID al crear una unidad, el ID se asigna automáticamente"
         )
-# la unidd padre debe ser de las mismas unidades responsables
-# hacer una consulta para seleccionar la unidad responsable
-    """ if unidad.unidad_padre_id is not None:
-        parent_unidad = db.query(UnidadResponsable).filter(UnidadResponsable.id_unidad == unidad.unidad_padre_id).first()
-        if not parent_unidad:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Unidad padre no encontrada"
-            )
-        if parent_unidad.tipo_unidad != unidad.tipo_unidad:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La unidad padre debe ser del mismo tipo que la unidad que se está creando"
-            ) """
+
+    if unidad.responsable is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se puede asignar un responsable al crear una unidad, asigna el responsable después"
+        )
+
+    if unidad.unidad_padre_id == unidad.id_unidad:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La unidad no puede ser su propia unidad padre"
+        )
+
+    # Verificar que la unidad padre exista
+    parent_unidad = db.query(UnidadResponsable).filter(UnidadResponsable.id_unidad == unidad.unidad_padre_id).first()
+    if not parent_unidad:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unidad padre no encontrada"
+        )
+
+    # Validaciones opcionales con formato
+    if unidad.rfc and len(unidad.rfc) != 13:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El RFC debe tener 13 caracteres"
+        )
+
+    if unidad.correo_electronico and "@" not in unidad.correo_electronico:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El correo electrónico debe ser válido"
+        )
+
+    if unidad.codigo_postal and len(unidad.codigo_postal) != 5:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El código postal debe tener 5 caracteres"
+        )
+
+    if unidad.telefono and len(unidad.telefono) < 10:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El teléfono debe tener al menos 10 caracteres"
+        )
+
     try:
-        # Crear la nueva unidad responsable
-        new_unidad = UnidadResponsable( 
+        new_unidad = UnidadResponsable(
             nombre=unidad.nombre,
             telefono=unidad.telefono,
             domicilio=unidad.domicilio,
@@ -760,20 +720,21 @@ def create_unidades_responsables(
             codigo_postal=unidad.codigo_postal,
             rfc=unidad.rfc,
             correo_electronico=unidad.correo_electronico,
-            responsable=unidad.responsable,  # Asignar el ID del responsable
+            responsable=None,
             tipo_unidad=unidad.tipo_unidad,
-            unidad_padre_id=unidad.unidad_padre_id  # Asignar el ID de la unidad padre
+            unidad_padre_id=unidad.unidad_padre_id
         )
         db.add(new_unidad)
         db.commit()
         db.refresh(new_unidad)
         return jsonable_encoder(new_unidad)
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al crear la unidad responsable: {str(e)}"
         )
-    
+
 # endpoint para editar unidades responsables
 @app.put(
     "/unidades_responsables/{id_unidad}",
@@ -786,6 +747,14 @@ def actualizar_unidad(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Solo el admin puede actualizar unidades responsables
+    user_role = current_user.role.value if isinstance(current_user.role, Enum) else str(current_user.role)
+    if user_role != UserRoles.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permiso para actualizar unidades responsables"
+        )
+
     # Buscar la unidad existente
     db_unidad = db.query(UnidadResponsable).get(id_unidad)
     if not db_unidad:
@@ -793,73 +762,120 @@ def actualizar_unidad(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No se encontró una unidad con ID {id_unidad}"
         )
-    
-    # Verificar si el nuevo responsable existe (si se proporciona)
-    if unidad_actualizacion.responsable_id is not None:
-        responsable = db.query(User).get(unidad_actualizacion.responsable_id)
-        if not responsable:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No se encontró un usuario con ID {unidad_actualizacion.responsable_id}"
-            )
-    
-    # Verificar si la nueva unidad padre existe (si se proporciona)
-    if unidad_actualizacion.unidad_padre_id:
-        unidad_padre = db.query(UnidadResponsable).get(unidad_actualizacion.unidad_padre_id)
-        if not unidad_padre:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No se encontró una unidad padre con ID {unidad_actualizacion.unidad_padre_id}"
-            )
-    
-    # Actualizar los campos de la unidad
+
     data = unidad_actualizacion.model_dump(exclude_unset=True)
+
+    # No modificar campos protegidos
+    for forbidden in ["id_unidad", "fecha_creacion", "fecha_cambio"]:
+        if forbidden in data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"No se puede modificar el campo {forbidden}"
+            )
+
+    # Validaciones básicas de formato
+    if "nombre" in data and (data["nombre"] is None or str(data["nombre"]).strip() == ""):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El nombre de la unidad no puede estar vacío")
+
+    if "tipo_unidad" in data and (data["tipo_unidad"] is None or str(data["tipo_unidad"]).strip() == ""):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El tipo de unidad no puede estar vacío")
+
+    if "unidad_padre_id" in data:
+        unidad_padre_id = data["unidad_padre_id"]
+        if unidad_padre_id == id_unidad:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="La unidad no puede ser su propia unidad padre")
+        unidad_padre = db.query(UnidadResponsable).get(unidad_padre_id)
+        if not unidad_padre:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No se encontró una unidad padre con ID {unidad_padre_id}")
+
+    if "rfc" in data and data["rfc"] is not None and len(str(data["rfc"])) != 13:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El RFC debe tener 13 caracteres")
+
+    if "correo_electronico" in data and data["correo_electronico"] is not None and "@" not in str(data["correo_electronico"]):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El correo electrónico debe ser válido")
+
+    if "codigo_postal" in data and data["codigo_postal"] is not None and len(str(data["codigo_postal"])) != 5:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El código postal debe tener 5 caracteres")
+
+    if "telefono" in data and data["telefono"] is not None and len(str(data["telefono"])) < 10:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El teléfono debe tener al menos 10 caracteres")
+
+    # Responsable (ID directo o objeto) si viene en payload
     if "responsable_id" in data:
+        responsable = db.query(User).get(data["responsable_id"])
+        if not responsable:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No se encontró un usuario con ID {data['responsable_id']}")
         db_unidad.responsable = data.pop("responsable_id")
-    # Soporte para objeto 'responsable' anidado { "responsable": { "id": 1 } }
+
     if "responsable" in data:
         resp = data.pop("responsable")
         if resp is None:
             db_unidad.responsable = None
         else:
             resp_id = None
-            try:
-                resp_id = getattr(resp, "id", None)
-            except Exception:
-                pass
-            if resp_id is None and isinstance(resp, dict):
+            if isinstance(resp, dict):
                 resp_id = resp.get("id")
-            if resp_id is None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El objeto 'responsable' debe incluir el campo 'id'"
-                )
+            else:
+                resp_id = getattr(resp, "id", None)
+            if not resp_id:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El objeto responsable debe incluir id")
             responsable = db.query(User).get(resp_id)
             if not responsable:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"No se encontró un usuario con ID {resp_id}"
-                )
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No se encontró un usuario con ID {resp_id}")
             db_unidad.responsable = resp_id
+
+    # Campos modificables (aquí todos menos id/fechas)
+    updatable_fields = {
+        "nombre", "telefono", "domicilio", "municipio", "localidad",
+        "codigo_postal", "rfc", "correo_electronico", "tipo_unidad", "unidad_padre_id"
+    }
+
     for key, value in data.items():
-        setattr(db_unidad, key, value)
-    
+        if key in updatable_fields:
+            setattr(db_unidad, key, value)
+
     db.commit()
     db.refresh(db_unidad)
-    
-    # Preparar respuesta con responsable embebido
+
+    # Construir respuesta con responsable embebido
+    resp_obj = None
     if db_unidad.usuario_responsable:
-        db_unidad.responsable = UserResponse(
+        resp_obj = UserResponse(
             id=db_unidad.usuario_responsable.id,
             username=db_unidad.usuario_responsable.username,
             email=db_unidad.usuario_responsable.email,
             role=db_unidad.usuario_responsable.role,
             is_deleted=db_unidad.usuario_responsable.is_deleted,
         )
-    else:
-        db_unidad.responsable = None
-    
-    return db_unidad
+
+    return {
+        "id_unidad": db_unidad.id_unidad,
+        "nombre": db_unidad.nombre,
+        "telefono": db_unidad.telefono,
+        "domicilio": db_unidad.domicilio,
+        "municipio": db_unidad.municipio,
+        "localidad": db_unidad.localidad,
+        "codigo_postal": db_unidad.codigo_postal,
+        "rfc": db_unidad.rfc,
+        "correo_electronico": db_unidad.correo_electronico,
+        "tipo_unidad": db_unidad.tipo_unidad,
+        "fecha_creacion": db_unidad.fecha_creacion,
+        "fecha_cambio": db_unidad.fecha_cambio,
+        "unidad_padre_id": db_unidad.unidad_padre_id,
+        "responsable_id": db_unidad.responsable,
+        "responsable": resp_obj,
+        "dependientes": [
+            {
+                "id_unidad": d.id_unidad,
+                "nombre": d.nombre,
+                "tipo_unidad": d.tipo_unidad,
+                "unidad_padre_id": d.unidad_padre_id,
+            }
+            for d in db_unidad.dependientes
+        ]
+    }
+
+
 
 """ @app.get(
     "/unidades_responsables",

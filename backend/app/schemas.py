@@ -157,7 +157,8 @@ class UnidadResponsableBase(BaseModel):
 
 # Esquema para creación de Unidad Responsable
 class UnidadResponsableCreate(UnidadResponsableBase):
-    pass
+    tipo_unidad: str
+    unidad_padre_id: int
 
 # Esquema para actualización de Unidad Responsable
 class UnidadResponsableUpdate(BaseModel):
