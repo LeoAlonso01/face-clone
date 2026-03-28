@@ -6,7 +6,7 @@ from .database import Base, engine
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 from .middleware import AuditMiddleware
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, func
 from contextlib import asynccontextmanager
 from datetime import date, timedelta, datetime
 from enum import Enum
@@ -977,8 +977,8 @@ def get_cargo(cargo_id: int, db: Session = Depends(get_db)):
 
 @app.post("/cargos", response_model=CargoResponse, tags=["Cargos"])
 def create_cargo(cargo: CargoCreate, db: Session = Depends(get_db), current_admin: User = Depends(get_admin_user)):
-    # Verificar unicidad
-    existing = db.query(Cargo).filter(Cargo.nombre == cargo.nombre, Cargo.is_deleted == False).first()
+    # Verificar unicidad global para evitar conflicto con el índice único de BD.
+    existing = db.query(Cargo).filter(func.lower(Cargo.nombre) == cargo.nombre.lower()).first()
     if existing:
         raise HTTPException(status_code=400, detail="Ya existe un cargo con ese nombre")
     db_obj = Cargo(**cargo.model_dump(exclude_unset=True))

@@ -277,8 +277,19 @@ class CargoBase(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-class CargoCreate(CargoBase):
+class CargoCreate(BaseModel):
     nombre: str
+    descripcion: Optional[str] = None
+    activo: Optional[bool] = True
+
+    @field_validator('nombre')
+    def normalize_nombre(cls, v: str):
+        normalized = v.strip()
+        if not normalized:
+            raise ValueError('El nombre del cargo es obligatorio')
+        return normalized
+
+    model_config = ConfigDict(from_attributes=True)
 
 class CargoResponse(CargoBase):
     id: int
