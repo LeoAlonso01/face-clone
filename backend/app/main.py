@@ -1325,8 +1325,13 @@ def read_acta(acta_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Acta no encontrada")
     return db_acta
 
-@app.post("/actas", response_model=ActaResponse, status_code=status.HTTP_201_CREATED, tags=["Actas de Entrega Recepción"])
-def crear_acta(acta: ActaCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
+@app.post("/actas", response_model=ActaResponse, 
+          status_code=status.HTTP_201_CREATED, 
+          tags=["Actas de Entrega Recepción"])
+def crear_acta(acta: ActaCreate, 
+               db: Session = Depends(get_db), 
+               current_user: User = Depends(get_current_user), 
+               request: Request = None):
     """
     Crear una nueva acta de entrega-recepción
     """
@@ -1467,6 +1472,9 @@ def delete_acta(acta_id: int, db: Session = Depends(get_db), current_user: User 
     
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
+    
+    if db_acta.anexos and len(db_acta.anexos) > 0:
+        raise HTTPException(status_code=400, detail="No se puede eliminar un acta que tiene anexos asociados. Elimina primero los anexos.")
     
     # Opción 1: Eliminación real
     db.delete(db_acta)
