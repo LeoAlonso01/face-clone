@@ -431,3 +431,21 @@ class ActaUpdate(BaseModel):
     creado_en: Optional[datetime] = None
     actualizado_en: Optional[datetime] = None
    
+
+class ResumenBase(BaseModel):
+    acta_id:int
+
+class ResumenCreate(ResumenBase):
+    pass
+
+class ResumenResponse(BaseModel):
+    id: int
+    acta_id: int
+    file_id: Optional[str]
+    url: str
+    nombre_archivo: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    class Config:
+        from_attributes = True

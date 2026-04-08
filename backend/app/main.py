@@ -1,7 +1,10 @@
+import io
 import secrets
 import string
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status, Body, Query, Request 
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+
+from app.services.google_drive import get_drive_service, upload_pdf_to_drive
 from .database import Base, engine
 from typing import List
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,8 +28,8 @@ from .audit import create_audit_log
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import Anexos, User, UserRoles, UnidadResponsable, PasswordAuditLog, AuditLog, Cargo, UserCargoHistorial
 from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, ChangePasswordRequest, UserResponse, AnexoUpdate, ResetPasswordRequest, PasswordChangeResponse
-from .models import ActaEntregaRecepcion
-from .schemas import AnexoCreate, AnexoResponse, CargoCreate, CargoResponse, UserCargoHistorialCreate, UserCargoHistorialResponse
+from .models import ActaEntregaRecepcion, Resumen
+from .schemas import AnexoCreate, AnexoResponse, CargoCreate, CargoResponse, UserCargoHistorialCreate, UserCargoHistorialResponse, ResumenBase, ResumenCreate, ResumenResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
 from .database import SessionLocal, engine, Base, get_db
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -39,6 +42,7 @@ from sqlalchemy.orm import joinedload
 from fastapi import UploadFile, File
 import os
 from fastapi.staticfiles import StaticFiles
+
 
 
 UPLOAD_DIR = "/app/uploads/pdfs"
@@ -1711,3 +1715,49 @@ def read_anexos_by_estado(estado: str, db: Session = Depends(get_db)):
     
 # Join de anexos por actas
 
+
+####################################################################################################
+#                                                                                                  #
+#                         Resumenes de las actas                                                   #
+#                                                                                                  #
+####################################################################################################
+
+@app.post("/{acta_id}", response_model=ResumenResponse, tags=["Resúmenes"])
+async def upload_resumen(
+    acta_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    # Validar el tipo de archivo
+    if not file.content_type.startswith("application/pdf"):
+        raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
+    
+    # Validar que el acta existe
+    acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
+    if not acta:    
+        raise HTTPException(status_code=404, detail="Acta no encontrada")
+    
+    # validar que no exista un resumen para esa acta
+    existing = db.query(Resumen).filter(Resumen.acta_id == acta_id).first()
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Ya existe un resumen para esta acta")
+    
+    contents = await file.read()
+
+    # subir a drive
+    result = upload_pdf_to_drive(contents, acta_id)
+
+    # guardar en db
+    nuevo_resumen = Resumen(
+        acta_id=acta_id,
+        file_id=result["file_id"],
+        url=result["url"],
+        nombre_archivo=result["nombre_archivo"]
+    )
+
+    db.add(nuevo_resumen)
+    db.commit()
+    db.refresh(nuevo_resumen)
+
+    return nuevo_resumen 

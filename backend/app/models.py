@@ -9,6 +9,9 @@ from sqlalchemy import Boolean
 from enum import Enum as PyEnum
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
+from sqlalchemy import Enum, JSON, Boolean, TIMESTAMP
+
+
 """ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base() """
@@ -206,6 +209,7 @@ class ActaEntregaRecepcion(Base):
 
     # relacion con unidades responsables
     unidad = relationship("UnidadResponsable", back_populates="actas")
+    resumenes = relationship("Resumen", back_populates="acta", cascade="all, delete-orphan")
 
 class Anexos(Base):             
     __tablename__ = "anexos"
@@ -273,4 +277,18 @@ class UserCargoHistorial(Base):
     asignado_por = relationship("User", foreign_keys=[asignado_por_user_id], back_populates="cargos_asignados")
 
 
+class Resumen(Base):
+    __tablename__ = "resumenes"
 
+    id = Column(Integer, primary_key=True, index=True)
+    acta_id = Column(Integer, ForeignKey("acta_entrega_recepcion.id", ondelete="CASCADE"), nullable=False)
+
+    file_id = Column(String(255))
+    url = Column(Text, nullable=False)
+    nombre_archivo = Column(String(255))
+
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
+
+    # Relación (opcional pero recomendable)
+    acta = relationship("ActaEntregaRecepcion", back_populates="resumenes")

@@ -11,3 +11,7 @@ python-multipart
 
 # Fuerza una versión estable de bcrypt
 bcrypt==4.1.2
+
+# google required libraries
+google-api-python-client
+google-auth
