@@ -565,46 +565,56 @@ def obtener_unidad_por_usuario(user_id:int, db: Session = Depends(get_db)):
         }
     }
 
-# endpoint para arbol jerarquico de unidades responsables
 @app.get(
     "/unidades_jerarquicas",
     response_model=List[UnidadJerarquicaResponse],
     tags=["Jerarquía de Unidades Responsables", "Unidades Responsables"]
 )
-def unidades_jerarquicas(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def unidades_jerarquicas(db: Session = Depends(get_db)):
 
-    # Asegúrate de comparar el valor real, no el objeto columna
-    user_role = current_user.role.value if isinstance(current_user.role, Enum) else str(current_user.role)
-    if user_role != UserRoles.ADMIN.value:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tienes permiso para acceder a esta información"
-        )
-    
     sql = text("""
         WITH RECURSIVE jerarquia AS (
             SELECT 
-                u.id_unidad, u.nombre, u.tipo_unidad, u.unidad_padre_id, 0 as nivel,
+                u.id_unidad, 
+                u.nombre, 
+                u.tipo_unidad, 
+                u.unidad_padre_id, 
+                0 as nivel,
                 u.responsable as responsable_id
             FROM unidades_responsables u
             WHERE unidad_padre_id IS NULL
+
             UNION ALL
+
             SELECT 
-                u.id_unidad, u.nombre, u.tipo_unidad, u.unidad_padre_id, j.nivel + 1,
+                u.id_unidad, 
+                u.nombre, 
+                u.tipo_unidad, 
+                u.unidad_padre_id, 
+                j.nivel + 1,
                 u.responsable as responsable_id
             FROM unidades_responsables u
             JOIN jerarquia j ON u.unidad_padre_id = j.id_unidad
         )
         SELECT 
-            j.id_unidad, j.nombre, j.tipo_unidad, j.nivel, 
-            us.id as responsable_id, us.username, us.email
+            j.id_unidad, 
+            j.nombre, 
+            j.tipo_unidad, 
+            j.nivel,
+            j.unidad_padre_id,
+            us.id as responsable_id, 
+            us.username, 
+            us.email
         FROM jerarquia j
         LEFT JOIN users us ON j.responsable_id = us.id
-        ORDER BY j.nivel, j.nombre;
+        ORDER BY j.nivel, j.unidad_padre_id, j.nombre;
     """)
+
     result = db.execute(sql).fetchall()
 
-    unidades = []
+    # 🔥 PASO 1: crear diccionario
+    unidades_dict = {}
+
     for row in result:
         responsable = None
         if row.responsable_id:
@@ -614,16 +624,30 @@ def unidades_jerarquicas(db: Session = Depends(get_db), current_user: User = Dep
                 "email": row.email
             }
 
-        unidades.append({
+        unidades_dict[row.id_unidad] = {
             "id_unidad": row.id_unidad,
             "nombre": row.nombre,
             "tipo_unidad": row.tipo_unidad,
             "nivel": row.nivel,
-            "responsable": responsable
-        })
+            "unidad_padre_id": row.unidad_padre_id,
+            "responsable": responsable,
+            "children": []
+        }
 
-    return unidades
+    # 🔥 PASO 2: construir árbol
+    arbol = []
 
+    for unidad in unidades_dict.values():
+        padre_id = unidad["unidad_padre_id"]
+
+        if padre_id:
+            padre = unidades_dict.get(padre_id)
+            if padre:
+                padre["children"].append(unidad)
+        else:
+            arbol.append(unidad)
+
+    return arbol
 # endpoint para crear unidades responsables
 @app.post(
     "/unidades_responsables",
@@ -1579,6 +1603,7 @@ def read_anexos(
         if not anexos:
             return []
         return anexos
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")
     

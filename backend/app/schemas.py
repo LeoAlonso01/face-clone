@@ -25,6 +25,7 @@ class UserBase(BaseModel):
     role: Optional[UserRoles] = None
     reset_token: Optional[str] = None
     reset_token_expiration: Optional[datetime] = None
+    anexo : Optional[List["AnexoResponse"]] = Field(default_factory=list)
 
 
 
@@ -239,6 +240,7 @@ class AnexoBase(BaseModel):
     unidad_responsable_id: Optional[int] = None
     fecha_creacion: Optional[datetime] = None
     acta_id: Optional[int] = None   
+    creador : Optional[UserBase] = None
 
 class AnexoCreate(AnexoBase):
     clave: str
