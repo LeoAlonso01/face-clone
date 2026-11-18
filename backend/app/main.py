@@ -1,7 +1,7 @@
 import io
 import secrets
 import string
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status, Body, Query, Request 
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends, status, Body, Query, Request, Form
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 from app.services.google_drive import get_drive_service, upload_pdf_to_drive
@@ -32,6 +32,7 @@ from .models import ActaEntregaRecepcion, Resumen
 from .schemas import AnexoCreate, AnexoResponse, CargoCreate, CargoResponse, UserCargoHistorialCreate, UserCargoHistorialResponse, ResumenBase, ResumenCreate, ResumenResponse
 from .schemas import UnidadResponsableUpdate, UnidadResponsableResponse, UnidadResponsableCreate, UnidadJerarquicaResponse, UserCreate
 from .database import SessionLocal, engine, Base, get_db
+from .anexo_permissions import router as permisos_anexos_router, validar_captura, PERMISSION_TABLES
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy.sql import text
 from contextlib import contextmanager
@@ -96,10 +97,12 @@ def session_scope():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    Base.metadata.create_all(bind=engine)
+    # Los permisos se instalan explícitamente con migrations/004_anexo_permissions.sql.
+    Base.metadata.create_all(bind=engine, tables=[table for table in Base.metadata.sorted_tables if table.name not in PERMISSION_TABLES])
     yield
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(permisos_anexos_router)
 
 origins = [
     "https://entrega-recepcion-frontend.vercel.app",
@@ -137,13 +140,15 @@ def read_root():
 #                                           ARCHIVOS
 # =================================================================================================
 @app.post("/pdf", tags=["Archivos"])
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(file: UploadFile = File(...), clave: str = Form(...),
+                     db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    validar_captura(db, current_user, clave)
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF")
 
     # Generar nombre único
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"{timestamp}_{file.filename}"
+    filename = f"{timestamp}_{secrets.token_hex(8)}_{os.path.basename((file.filename or 'anexo.pdf').replace(chr(92), '/'))}"
     file_path = os.path.join(UPLOAD_DIR, filename)
     static_path = os.path.join(STATIC_DIR, filename)
 
@@ -1610,9 +1615,11 @@ def read_anexos(
 # add by POST
 @app.post("/anexos", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
 def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
-    
-    db_anexo = Anexos(clave=anexo.clave,
-        creador_id=anexo.creador_id,
+    if anexo.creador_id != current_user.id:
+        raise HTTPException(status_code=403, detail="El creador debe ser el usuario autenticado")
+    clave = validar_captura(db, current_user, anexo.clave)
+    db_anexo = Anexos(clave=clave,
+        creador_id=current_user.id,
         datos=anexo.datos,
         estado=anexo.estado,
         unidad_responsable_id=anexo.unidad_responsable_id,
@@ -1652,11 +1659,26 @@ def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
 # para actualizar un anexos existente
 @app.put("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
 def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
-    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
+    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).with_for_update(of=Anexos).first()
     if not db_anexo:
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
 
     changes = anexo.model_dump(exclude_unset=True)
+
+    if "creador_id" in changes and changes["creador_id"] != db_anexo.creador_id:
+        raise HTTPException(status_code=403, detail="No se puede cambiar el creador de un anexo")
+    if "id" in changes and changes["id"] != db_anexo.id:
+        raise HTTPException(status_code=422, detail="No se puede cambiar el identificador de un anexo")
+    if "creador" in changes:
+        raise HTTPException(status_code=422, detail="El creador es un campo de solo lectura")
+    # Comprueba tanto la clave original como la nueva para impedir eludir una revocación.
+    validar_captura(db, current_user, db_anexo.clave, anexo=db_anexo)
+    if "clave" in changes:
+        if changes["clave"] is None:
+            raise HTTPException(status_code=422, detail="La clave es obligatoria")
+        changes["clave"] = validar_captura(db, current_user, changes["clave"], anexo=db_anexo)
+    changes.pop("creador_id", None)
+    changes.pop("id", None)
 
     # Actualizar campos
     for key, value in changes.items():
@@ -1685,10 +1707,27 @@ def update_anexo(anexo_id: int, anexo: AnexoUpdate, db: Session = Depends(get_db
 
 # marcar un anexo como eliminado
 @app.delete("/anexos/{anexo_id}", tags=["Anexos de Entrega Recepción"])
-def delete_anexo(anexo_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user), request: Request = None):
-    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
+def delete_anexo(
+    anexo_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    request: Request = None,
+):
+    db_anexo = db.query(Anexos).filter(
+        Anexos.id == anexo_id,
+        Anexos.is_deleted == False,
+    ).with_for_update(of=Anexos).first()
     if not db_anexo:
         raise HTTPException(status_code=404, detail="Anexo no encontrado")
+
+    if current_user.role != UserRoles.ADMIN and db_anexo.creador_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Solo el creador o un administrador puede eliminar el anexo")
+
+    if db_anexo.estado != "Borrador":
+        raise HTTPException(status_code=409, detail="Solo se pueden eliminar anexos en Borrador")
+
+    if db_anexo.acta_id is not None:
+        raise HTTPException(status_code=409, detail="El anexo está ligado a un acta")
 
     db_anexo.is_deleted = True
     db_anexo.actualizado_en = date.today()
@@ -1785,4 +1824,4 @@ async def upload_resumen(
     db.commit()
     db.refresh(nuevo_resumen)
 
-    return nuevo_resumen 
+    return nuevo_resumen

@@ -18,3 +18,37 @@ backups
 
 # credenciales de google api
 credentials.json
+# Archivos subidos por usuarios (conservarlos en disco)
+/backend/uploads/pdfs/
+/backend/static/pdfs/
+
+# Configuracion local y secretos
+.env
+.env.*
+
+# Entornos virtuales y caches de Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Resultados de pruebas y logs
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.log
+
+# Respaldos de bases de datos; las migraciones SQL siguen incluidas
+*.dump
+*.backup
+*_backup*.sql
+respaldo_*.sql
+backup_*.sql
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
