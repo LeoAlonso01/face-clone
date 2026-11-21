@@ -333,7 +333,52 @@ class UserCargoHistorialResponse(UserCargoHistorialBase):
 
 # Schema para crear actas (POST)
 # Schema base para Acta (sin relaciones)
+class ActaComision(BaseModel):
+    usuario_id: Optional[int] = Field(None, gt=0)
+    nombre: str = Field(..., min_length=1)
+    mismo_oficio: bool = True
+    oficio_comision: Optional[str] = None
+    fecha_oficio_comision: Optional[str] = None
+
+    @field_validator("nombre")
+    @classmethod
+    def nombre_no_vacio(cls, value):
+        value = value.strip()
+        if not value:
+            raise ValueError("El nombre del comisionado no puede estar vacío")
+        return value
+
+
+class ActaVistaPreviaRequest(BaseModel):
+    saliente_id: Optional[int] = Field(None, gt=0)
+    unidad_responsable: int = Field(..., gt=0)
+
+
+class AnexoVistaPrevia(BaseModel):
+    id: int
+    clave: Optional[str] = None
+    estado: str
+    fecha_creacion: Optional[datetime] = None
+    filas: int
+
+
+class ActaVistaPreviaResponse(BaseModel):
+    anexos_creador_id: int
+    anexos_creador_usuario: str
+    anexos_origen: str
+    unidad_responsable: int
+    unidad_nombre: str
+    total: int
+    anexos_revision: str
+    anexos: List[AnexoVistaPrevia]
+
+
 class ActaCreate(BaseModel):
+    anexos_revision: Optional[str] = Field(None, min_length=64, max_length=64)
+    entrante_id: Optional[int] = Field(None, gt=0)
+    saliente_id: Optional[int] = Field(None, gt=0)
+    comisionados: List[int] = Field(default_factory=list)
+    comisiones: List[ActaComision] = Field(default_factory=list)
     unidad_responsable: int = Field(..., description="ID de la unidad responsable")
     folio: str = Field(..., description="Número de folio del acta")
     fecha: str = Field(..., description="Fecha del acta (YYYY-MM-DD)")
@@ -363,6 +408,11 @@ class ActaCreate(BaseModel):
 
 # Schema para respuesta básica de Acta
 class ActaResponse(BaseModel):
+    creador_id: Optional[int] = None
+    entrante_id: Optional[int] = None
+    saliente_id: Optional[int] = None
+    comisionados: List[int] = Field(default_factory=list)
+    comisiones: List[ActaComision] = Field(default_factory=list)
     id: int
     unidad_responsable: int
     folio: str
@@ -396,6 +446,10 @@ class ActaResponse(BaseModel):
     anexos: Optional[List[AnexoResponse]] = None  # ← Anexos relacionados
 
     model_config = ConfigDict(from_attributes=True)
+class ActaDocumentoResponse(ActaResponse):
+    unidad_nombre: str
+
+
 class ActaWithUnidadResponse(ActaResponse):
     unidad_nombre: Optional[str] = None
     unidad_descripcion: Optional[str] = None
@@ -403,6 +457,10 @@ class ActaWithUnidadResponse(ActaResponse):
     model_config = ConfigDict(from_attributes=True)
 
 class ActaUpdate(BaseModel):
+    entrante_id: Optional[int] = Field(None, gt=0)
+    saliente_id: Optional[int] = Field(None, gt=0)
+    comisionados: Optional[List[int]] = None
+    comisiones: Optional[List[ActaComision]] = None
     unidad_responsable: Optional[int] = None
     folio: Optional[str] = None
     fecha: Optional[str] = None

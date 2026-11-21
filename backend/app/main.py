@@ -25,6 +25,8 @@ from .auth import (
     
 )
 from .audit import create_audit_log
+from .actas_service import crear_acta_con_anexos, cargar_acta, preparar_participantes, vista_previa_acta, datos_acta_documento
+from .schemas import ActaVistaPreviaRequest, ActaVistaPreviaResponse, ActaDocumentoResponse
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import Anexos, User, UserRoles, UnidadResponsable, PasswordAuditLog, AuditLog, Cargo, UserCargoHistorial
 from .schemas import ActaResponse, ActaCreate, ActaUpdate, ForgotPasswordRequest, ChangePasswordRequest, UserResponse, AnexoUpdate, ResetPasswordRequest, PasswordChangeResponse
@@ -1358,6 +1360,21 @@ def read_acta(acta_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Acta no encontrada")
     return db_acta
 
+@app.get("/actas/{acta_id}/datos-pdf", response_model=ActaDocumentoResponse,
+         tags=["Actas de Entrega Recepción"])
+def read_acta_documento(acta_id: int, db: Session = Depends(get_db),
+                       current_user: User = Depends(get_current_user)):
+    return datos_acta_documento(db, acta_id)
+
+
+@app.post("/actas/vista-previa", response_model=ActaVistaPreviaResponse,
+          tags=["Actas de Entrega Recepción"])
+def previsualizar_acta(datos: ActaVistaPreviaRequest,
+                      db: Session = Depends(get_db),
+                      current_user: User = Depends(get_current_user)):
+    return vista_previa_acta(db, datos.unidad_responsable, current_user.id, datos.saliente_id)
+
+
 @app.post("/actas", response_model=ActaResponse, 
           status_code=status.HTTP_201_CREATED, 
           tags=["Actas de Entrega Recepción"])
@@ -1369,94 +1386,29 @@ def crear_acta(acta: ActaCreate,
     Crear una nueva acta de entrega-recepción
     """
     try:
-        # Validar que la unidad responsable existe
-        unidad = db.query(UnidadResponsable).filter(
-            UnidadResponsable.id_unidad == acta.unidad_responsable
-        ).first()
-        
-        if not unidad:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unidad responsable con ID {acta.unidad_responsable} no existe"
-            )
-        
-        # Verificar si ya existe un folio
-        existing_acta = db.query(ActaEntregaRecepcion).filter(
-            ActaEntregaRecepcion.folio == acta.folio
-        ).first()
-        
-        if existing_acta:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Ya existe un acta con el folio {acta.folio}"
-            )
-        
-        # Crear nueva acta
-        db_acta = ActaEntregaRecepcion(**acta.model_dump(exclude_unset=True))
-        db.add(db_acta)
-        db.commit()
-        db.refresh(db_acta)
-        anexos_a_asociar = db.query(Anexos).filter(
-            Anexos.unidad_responsable_id == acta.unidad_responsable,
-            Anexos.creador_id == current_user.id,
-            ((Anexos.acta_id == None) | (Anexos.acta_id == 0))
-        ).all()
-        for an in anexos_a_asociar:
-            an.acta_id = db_acta.id
-        db.commit()
-        db.refresh(db_acta)
-        if db_acta.creado_en is None:
-            db_acta.creado_en = datetime.utcnow()
-        if db_acta.actualizado_en is None:
-            db_acta.actualizado_en = datetime.utcnow()
-            
-        db.commit()
-        db.refresh(db_acta)
-        db_acta = (
-            db.query(ActaEntregaRecepcion)
-            .options(selectinload(ActaEntregaRecepcion.anexos))
-            .filter(ActaEntregaRecepcion.id == db_acta.id)
-            .first()
-        )
-
-        # Auditoría
-        try:
-            logger.info(f"[AUDIT] Attempting to create audit log for acta {db_acta.id} by actor {current_user.id if current_user else None}")
-            audit_res = create_audit_log(
-                db=db,
-                actor_id=current_user.id if current_user else None,
-                action='create_acta',
-                object_type='acta',
-                object_id=db_acta.id,
-                metadata={'folio': db_acta.folio, 'unidad_responsable': db_acta.unidad_responsable},
-                ip=(request.state.client_ip if request else None)
-            )
-            logger.info(f"[AUDIT] create_audit_log returned: {audit_res}")
-            # Si por alguna razón el helper falló silenciosamente, crear el registro manualmente
-            if audit_res is None:
-                from .models import AuditLog
-                fallback = AuditLog(
-                    actor_id=current_user.id if current_user else None,
-                    action='create_acta',
-                    object_type='acta',
-                    object_id=db_acta.id,
-                    ip_address=(request.state.client_ip if request else None),
-                    metadata_json={'folio': db_acta.folio}
-                )
-                db.add(fallback)
-                db.commit()
-                logger.info(f"[AUDIT] Fallback audit log created for acta {db_acta.id}")
-        except Exception as e:
-            logger.exception(f"Error creating audit log for acta {db_acta.id}: {e}")
-            pass
-
-        return db_acta
-        
+        db_acta, vinculados = crear_acta_con_anexos(db, acta, current_user.id)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
+        logger.exception("Error al crear acta y asociar anexos")
+        raise HTTPException(status_code=500, detail="No se pudo crear el acta ni asociar sus anexos")
+
+    acta_id = db_acta.id
+    logger.info("Acta %s creada por usuario %s en unidad %s: %s anexos asociados",
+                acta_id, current_user.id, acta.unidad_responsable, vinculados)
+    # La auditoría usa su propio commit; debe ocurrir después de la transacción del acta.
+    try:
+        create_audit_log(
+            db=db, actor_id=current_user.id, action="create_acta",
+            object_type="acta", object_id=acta_id,
+            metadata={"folio": db_acta.folio, "unidad_responsable": db_acta.unidad_responsable,
+                      "anexos_vinculados": vinculados},
+            ip=getattr(request.state, "client_ip", None) if request else None,
+        )
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error al crear acta: {str(e)}")
+        logger.exception("Error de auditoría para acta %s", acta_id)
+    return cargar_acta(db, acta_id)
 
 @app.put("/actas/{acta_id}", response_model=ActaResponse, tags=["Actas de Entrega Recepción"])
 def update_acta(
@@ -1475,10 +1427,22 @@ def update_acta(
         )
 
     changes = acta.model_dump(exclude_unset=True)
-    for key, value in changes.items():
-        setattr(db_acta, key, value)
-    db.commit()
-    db.refresh(db_acta)
+    campos_participantes = {
+        "entrante", "entrante_id", "saliente", "saliente_id", "comisionado",
+        "comisionados", "comisiones", "oficio_comision", "fecha_oficio_comision",
+    }
+    try:
+        if campos_participantes.intersection(changes):
+            participantes = {key: getattr(db_acta, key) for key in campos_participantes}
+            participantes.update({key: value for key, value in changes.items() if key in campos_participantes})
+            changes.update(preparar_participantes(db, participantes))
+        for key, value in changes.items():
+            setattr(db_acta, key, value)
+        db.commit()
+        db.refresh(db_acta)
+    except Exception:
+        db.rollback()
+        raise
 
     # Auditoría
     try:

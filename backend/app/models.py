@@ -190,6 +190,11 @@ class ActaEntregaRecepcion(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     unidad_responsable = Column(Integer, ForeignKey("unidades_responsables.id_unidad"), nullable=False)
+    creador_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    entrante_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    saliente_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    comisionados = Column(JSON, nullable=False, default=list, server_default="[]")
+    comisiones = Column(JSON, nullable=False, default=list, server_default="[]")
     folio = Column(String)
     fecha = Column(String)
     hora = Column(String)
