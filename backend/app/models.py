@@ -251,6 +251,10 @@ class Anexos(Base):
     unidad_responsable = relationship("UnidadResponsable", back_populates="anexos")
     
     # Relación con Acta
+    fojas_reporte = Column(Integer, nullable=True)
+    reporte_generado_en = Column(DateTime(timezone=True), nullable=True)
+    reporte_revision = Column(String(64), nullable=True)
+    reporte_formato = Column(String(40), nullable=True)
     acta_id = Column(Integer, ForeignKey("acta_entrega_recepcion.id"), nullable=True)
     acta = relationship("ActaEntregaRecepcion", back_populates="anexos")
 

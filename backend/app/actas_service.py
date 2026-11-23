@@ -153,5 +153,12 @@ def datos_acta_documento(db, acta_id):
     anexos = db.query(Anexos).populate_existing().filter(
         Anexos.acta_id == acta_id, Anexos.is_deleted.is_not(True)
     ).order_by(Anexos.id).all()
-    datos["anexos"] = [AnexoResponse.model_validate(anexo, from_attributes=True).model_dump() for anexo in anexos]
+    from .anexo_reportes import reporte_vigente
+    datos["anexos"] = []
+    for anexo in anexos:
+        item = AnexoResponse.model_validate(anexo, from_attributes=True).model_dump()
+        item["reporte_vigente"] = reporte_vigente(anexo)
+        if not item["reporte_vigente"]:
+            item["fojas_reporte"] = None
+        datos["anexos"].append(item)
     return datos

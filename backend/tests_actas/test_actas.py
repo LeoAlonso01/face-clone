@@ -11,7 +11,7 @@ import types
 from pathlib import Path
 
 import pytest
-from fastapi import FastAPI, Depends, HTTPException, Request, status
+from fastapi import FastAPI, Depends, HTTPException, Request, status, UploadFile, File, Form
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import make_url
@@ -22,7 +22,8 @@ database = types.ModuleType("app.database")
 database.Base = declarative_base()
 sys.modules["app.database"] = database
 from app.models import ActaEntregaRecepcion, Anexos, UnidadResponsable, User, UserRoles
-from app.schemas import ActaCreate, ActaResponse, ActaUpdate, ActaVistaPreviaRequest, ActaVistaPreviaResponse, ActaDocumentoResponse
+from app.schemas import AnexoDetalleResponse, ActaCreate, ActaResponse, ActaUpdate, ActaVistaPreviaRequest, ActaVistaPreviaResponse, ActaDocumentoResponse
+from app.anexo_reportes import detalle_anexo_reporte, registrar_reporte_anexo
 from app.actas_service import crear_acta_con_anexos, cargar_acta, preparar_participantes, vista_previa_acta, datos_acta_documento
 
 
@@ -57,7 +58,7 @@ def setup(engine):
     def get_current_user():
         return actor
     app = FastAPI()
-    namespace = dict(app=app, get_db=get_db, get_current_user=get_current_user, Session=Session,
+    namespace = dict(AnexoDetalleResponse=AnexoDetalleResponse, detalle_anexo_reporte=detalle_anexo_reporte, registrar_reporte_anexo=registrar_reporte_anexo, UploadFile=UploadFile, File=File, Form=Form, app=app, get_db=get_db, get_current_user=get_current_user, Session=Session,
                      User=User, Request=Request, Depends=Depends, HTTPException=HTTPException, status=status,
                      ActaCreate=ActaCreate, ActaResponse=ActaResponse, ActaUpdate=ActaUpdate,
                      ActaVistaPreviaRequest=ActaVistaPreviaRequest, ActaVistaPreviaResponse=ActaVistaPreviaResponse, vista_previa_acta=vista_previa_acta,
@@ -67,7 +68,7 @@ def setup(engine):
                      preparar_participantes=preparar_participantes, logger=logging.getLogger("actas_test"),
                      create_audit_log=lambda **kwargs: None)
     tree = ast.parse((Path(__file__).resolve().parents[1] / "app/main.py").read_text(encoding="utf-8"))
-    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in {"crear_acta", "read_acta", "update_acta", "previsualizar_acta", "read_acta_documento"}]
+    functions = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {"read_anexo", "guardar_reporte_anexo", "crear_acta", "read_acta", "update_acta", "previsualizar_acta", "read_acta_documento"}]
     exec(compile(ast.Module(body=functions, type_ignores=[]), "main_actas_endpoints", "exec"), namespace)
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client, db, namespace
@@ -399,3 +400,55 @@ def test_documento_pdf_recupera_datos_vigentes_y_solo_anexos_asociados_activos(s
     assert second["comisiones"][0]["oficio_comision"] == "EXT-03"
     assert db.get(Anexos, 3).acta_id is None
     assert client.get("/actas/999999/datos-pdf").status_code == 404
+
+
+def pdf_reporte(revision, paginas=3):
+    import io
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+    for _ in range(paginas):
+        writer.add_blank_page(width=612, height=792)
+    writer.add_metadata({"/Subject": revision})
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+def test_reporte_cuenta_pdf_y_conserva_revision_y_nombres(setup):
+    client, db, _ = setup
+    anexo(db, 1)
+    db.commit()
+    detalle = client.get('/anexos/1').json()
+    assert detalle['unidad_responsable_nombre'] == 'Unidad 212'
+    assert detalle['creador_nombre'] == 'empleado1'
+    original = db.get(Anexos, 1).actualizado_en
+    response = client.post('/anexos/1/reporte', data={'revision': detalle['reporte_revision_actual'], 'formato': detalle['reporte_formato_actual']}, files={'file': ('reporte.pdf', pdf_reporte(detalle['reporte_revision_actual']), 'application/pdf')})
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    assert saved['fojas_reporte'] == 3 and saved['reporte_vigente'] is True
+    assert saved['reporte_revision_actual'] == detalle['reporte_revision_actual']
+    assert db.get(Anexos, 1).actualizado_en == original
+    created = client.post('/actas', json=payload()).json()
+    documento = client.get(f"/actas/{created['id']}/datos-pdf").json()
+    assert documento['anexos'][0]['fojas_reporte'] == 3
+    db.get(Anexos, 1).datos = [{'dato': 'cambio'}]
+    db.commit()
+    assert client.get('/anexos/1').json()['reporte_vigente'] is False
+    documento = client.get(f"/actas/{created['id']}/datos-pdf").json()
+    assert documento['anexos'][0]['fojas_reporte'] is None
+    response = client.post('/anexos/1/reporte', data={'revision': detalle['reporte_revision_actual'], 'formato': detalle['reporte_formato_actual']}, files={'file': ('reporte.pdf', pdf_reporte(detalle['reporte_revision_actual']), 'application/pdf')})
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize('tipo', ['otro_pdf', 'invalido', 'sin_permiso'])
+def test_reporte_rechaza_archivos_y_actores_incorrectos(setup, tipo):
+    client, db, namespace = setup
+    anexo(db, 1)
+    db.commit()
+    detalle = client.get('/anexos/1').json()
+    contenido = pdf_reporte('otra-revision') if tipo == 'otro_pdf' else b'no es pdf'
+    if tipo == 'sin_permiso':
+        namespace['app'].dependency_overrides[namespace['get_current_user']] = lambda: db.get(User, 4)
+    response = client.post('/anexos/1/reporte', data={'revision': detalle['reporte_revision_actual'], 'formato': detalle['reporte_formato_actual']}, files={'file': ('reporte.pdf', contenido, 'application/pdf')})
+    assert response.status_code == (403 if tipo == 'sin_permiso' else 422), response.text
+    assert db.get(Anexos, 1).fojas_reporte is None

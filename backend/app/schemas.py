@@ -258,11 +258,23 @@ class AnexoUpdate(AnexoBase):
     fecha_creacion: Optional[datetime] = None
 
 class AnexoResponse(AnexoBase):
+    fojas_reporte: Optional[int] = None
+    reporte_generado_en: Optional[datetime] = None
+    reporte_vigente: bool = False
     id:int 
     creado_en: date
     actualizado_en: date
 
     model_config = ConfigDict(from_attributes=True, json_encoders={datetime: lambda v: v.isoformat() if v else None, date: lambda v: v.isoformat() if v else None})
+
+
+class AnexoDetalleResponse(AnexoResponse):
+    unidad_responsable_nombre: str
+    unidad_padre_id: Optional[int] = None
+    unidad_padre_nombre: Optional[str] = None
+    creador_nombre: str
+    reporte_revision_actual: str
+    reporte_formato_actual: str
 
 
 # =================================================================================================

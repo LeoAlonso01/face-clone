@@ -17,3 +17,5 @@ google-api-python-client
 google-auth
 google-auth-httplib2
 google-auth-oauthlib
+# Conteo de páginas de los reportes generados
+pypdf>=5,<7

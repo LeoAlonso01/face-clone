@@ -25,6 +25,8 @@ from .auth import (
     
 )
 from .audit import create_audit_log
+from .anexo_reportes import detalle_anexo_reporte, registrar_reporte_anexo
+from .schemas import AnexoDetalleResponse
 from .actas_service import crear_acta_con_anexos, cargar_acta, preparar_participantes, vista_previa_acta, datos_acta_documento
 from .schemas import ActaVistaPreviaRequest, ActaVistaPreviaResponse, ActaDocumentoResponse
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -1613,12 +1615,20 @@ def create_anexo(anexo: AnexoCreate, db: Session = Depends(get_db), current_user
     return db_anexo
     
 # get by id
-@app.get("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
+@app.get("/anexos/{anexo_id}", response_model=AnexoDetalleResponse, tags=["Anexos de Entrega Recepción"])
 def read_anexo(anexo_id: int, db: Session = Depends(get_db)):
-    db_anexo = db.query(Anexos).filter(Anexos.id == anexo_id, Anexos.is_deleted == False).first()
-    if not db_anexo:
-        raise HTTPException(status_code=404, detail="Anexo no encontrado")
-    return db_anexo
+    return detalle_anexo_reporte(db, anexo_id)
+
+
+@app.post("/anexos/{anexo_id}/reporte", response_model=AnexoDetalleResponse,
+          tags=["Anexos de Entrega Recepción"])
+async def guardar_reporte_anexo(anexo_id: int, file: UploadFile = File(...),
+                               revision: str = Form(...), formato: str = Form(...),
+                               db: Session = Depends(get_db),
+                               current_user: User = Depends(get_current_user)):
+    contenido = await file.read(25 * 1024 * 1024 + 1)
+    return registrar_reporte_anexo(db, anexo_id, current_user, contenido, revision, formato, file.content_type)
+
 
 # para actualizar un anexos existente
 @app.put("/anexos/{anexo_id}", response_model=AnexoResponse, tags=["Anexos de Entrega Recepción"])
