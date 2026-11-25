@@ -40,7 +40,8 @@ cp "$respaldo/database.py" "$candidato/backend/app/database.py"
 test ! -L "$contexto"
 mkdir -p "$contexto"
 cp "$candidato/backend/requirements.txt" "$contexto/requirements.txt"
-cp -a "$candidato/backend/app" "$contexto/app"
+mkdir -p "$contexto/app"
+cp -a "$candidato/backend/app/." "$contexto/app/"
 cat > "$contexto/Dockerfile" <<'DOCKERFILE'
 FROM python:3.13-slim
 WORKDIR /app
@@ -117,7 +118,9 @@ for nombre in ('ActaCreate', 'ActaUpdate', 'ActaResponse', 'ActaDocumentoRespons
     campos = spec['components']['schemas'][nombre]['properties']
     assert {'lugar_acta', 'ine_saliente', 'domicilio_saliente', 'telefono_saliente', 'nombramiento_saliente', 'asignacion_saliente', 'asignado_por_saliente'} <= set(campos), nombre
 assert 'children' in spec['components']['schemas']['UnidadJerarquicaResponse']['properties']
-assert 'fojas_por_defecto' in spec['components']['schemas']['AnexoResponse']['properties']
+respuesta = spec['paths']['/anexos']['get']['responses']['200']['content']['application/json']['schema']
+referencia = respuesta['items']['$ref'].rsplit('/', 1)[-1]
+assert 'fojas_por_defecto' in spec['components']['schemas'][referencia]['properties']
 for ruta, metodo in [('/actas/{acta_id}', 'put'), ('/anexos/{anexo_id}/reporte', 'post'), ('/pdf', 'post')]:
     assert spec['paths'][ruta][metodo].get('security'), ruta
 print('Esquemas y autenticación verificados')
