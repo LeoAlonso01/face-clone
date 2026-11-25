@@ -56,8 +56,12 @@ cmp "$respaldo/conteos-antes.json" "$respaldo/conteos-despues.json"
 echo "Migraciones aplicadas; conteos y vínculos conservados"
 probe="serumich-stage-probe-${revision:0:12}"
 anterior="serumich-stage-api-prev-${revision:0:12}"
-! sudo docker inspect "$probe" >/dev/null 2>&1
-! sudo docker inspect "$anterior" >/dev/null 2>&1
+if sudo docker inspect "$probe" >/dev/null 2>&1; then
+  echo "Ya existe el contenedor de prueba; revisar antes de continuar"; exit 1
+fi
+if sudo docker inspect "$anterior" >/dev/null 2>&1; then
+  echo "Ya existe un contenedor anterior con ese nombre; revisar antes de continuar"; exit 1
+fi
 renombrado=0
 detenido=0
 nuevo_intentado=0
