@@ -54,6 +54,10 @@ desechable cuyo nombre empiece con `serumich_test_actas_`. Las pruebas crean y
 eliminan tablas únicamente de esa base y rechazan otros nombres. No usan la
 conexión de la aplicación, Drive ni su arranque.
 
-La restricción previa del PUT que permite editar únicamente actas en estado
-`Borrador` se conserva. La selección del origen por saliente no requiere una
-migración adicional.
+El PUT permite editar actas en `Pendiente`, `Revisión` y `Borrador`
+(compatibilidad). `Completada` queda cerrada y no puede reabrirse por este flujo.
+ADMIN y AUDITOR pueden editar; USER únicamente actas de las que sea creador.
+Si existen anexos activos vinculados, no pueden cambiarse la unidad responsable
+ni la cuenta del saliente. Los guardados bloquean la fila del acta para impedir
+que un guardado concurrente modifique un acta que acaba de completarse.
+Estas reglas de edición no requieren una migración adicional.

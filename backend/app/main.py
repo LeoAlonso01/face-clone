@@ -25,9 +25,9 @@ from .auth import (
     
 )
 from .audit import create_audit_log
-from .anexo_reportes import detalle_anexo_reporte, registrar_reporte_anexo
+from .anexo_reportes import detalle_anexo_reporte, registrar_reporte_anexo, resumen_anexo_reporte
 from .schemas import AnexoDetalleResponse
-from .actas_service import crear_acta_con_anexos, cargar_acta, preparar_participantes, vista_previa_acta, datos_acta_documento
+from .actas_service import crear_acta_con_anexos, cargar_acta, preparar_participantes, vista_previa_acta, datos_acta_documento, validar_edicion_acta
 from .schemas import ActaVistaPreviaRequest, ActaVistaPreviaResponse, ActaDocumentoResponse
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 from .models import Anexos, User, UserRoles, UnidadResponsable, PasswordAuditLog, AuditLog, Cargo, UserCargoHistorial
@@ -1419,21 +1419,16 @@ def update_acta(
     db: Session = Depends(get_db), 
     current_user: User = Depends(get_current_user), 
     request: Request = None):
-    db_acta = db.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).first()
+    db_acta = db.query(ActaEntregaRecepcion).populate_existing().filter(ActaEntregaRecepcion.id == acta_id).with_for_update().first()
     if not db_acta:
         raise HTTPException(status_code=404, detail="Acta no encontrada")
-    if db_acta.estado != "Borrador":
-        raise HTTPException(
-            status_code=400,
-            detail="El acta no puede modificarse después de creada"
-        )
-
     changes = acta.model_dump(exclude_unset=True)
     campos_participantes = {
         "entrante", "entrante_id", "saliente", "saliente_id", "comisionado",
         "comisionados", "comisiones", "oficio_comision", "fecha_oficio_comision",
     }
     try:
+        validar_edicion_acta(db, db_acta, current_user, changes)
         if campos_participantes.intersection(changes):
             participantes = {key: getattr(db_acta, key) for key in campos_participantes}
             participantes.update({key: value for key, value in changes.items() if key in campos_participantes})
@@ -1570,10 +1565,13 @@ def read_anexos(
     db: Session = Depends(get_db)
 ):
     try:
-        anexos = db.query(Anexos).filter(Anexos.is_deleted == False).offset(skip).limit(limit).all()
+        anexos = db.query(Anexos).options(
+            joinedload(Anexos.unidad_responsable).joinedload(UnidadResponsable.padre),
+            joinedload(Anexos.creador),
+        ).filter(Anexos.is_deleted == False).order_by(Anexos.id).offset(skip).limit(limit).all()
         if not anexos:
             return []
-        return anexos
+        return [resumen_anexo_reporte(anexo) for anexo in anexos]
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al consultar la base de datos: {str(e)}")

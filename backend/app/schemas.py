@@ -213,18 +213,26 @@ class UnidadResponsableResponse(BaseModel):
 class ResponsableResumen(BaseModel):
     id: int
     username: str
-    email: str
+    email: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class UnidadJerarquicaResponse(BaseModel):
     id_unidad: int
     nombre: str
-    tipo_unidad: Optional[str]
+    tipo_unidad: Optional[str] = None
     nivel: int
-    responsable: Optional[ResponsableResumen]
+    unidad_padre_id: Optional[int] = None
+    responsable: Optional[ResponsableResumen] = None
+    children: List["UnidadJerarquicaResponse"] = Field(
+        default_factory=list
+    )
 
     model_config = ConfigDict(from_attributes=True)
+
+
+UnidadJerarquicaResponse.model_rebuild()
 
 # =================================================================================================
 #                                           ANEXOS
@@ -258,6 +266,7 @@ class AnexoUpdate(AnexoBase):
     fecha_creacion: Optional[datetime] = None
 
 class AnexoResponse(AnexoBase):
+    fojas_por_defecto: bool = False
     fojas_reporte: Optional[int] = None
     reporte_generado_en: Optional[datetime] = None
     reporte_vigente: bool = False
@@ -386,6 +395,13 @@ class ActaVistaPreviaResponse(BaseModel):
 
 
 class ActaCreate(BaseModel):
+    lugar_acta: Optional[str] = None
+    ine_saliente: Optional[str] = None
+    domicilio_saliente: Optional[str] = None
+    telefono_saliente: Optional[str] = None
+    nombramiento_saliente: Optional[str] = None
+    asignacion_saliente: Optional[str] = None
+    asignado_por_saliente: Optional[str] = None
     anexos_revision: Optional[str] = Field(None, min_length=64, max_length=64)
     entrante_id: Optional[int] = Field(None, gt=0)
     saliente_id: Optional[int] = Field(None, gt=0)
@@ -420,6 +436,13 @@ class ActaCreate(BaseModel):
 
 # Schema para respuesta básica de Acta
 class ActaResponse(BaseModel):
+    lugar_acta: Optional[str] = None
+    ine_saliente: Optional[str] = None
+    domicilio_saliente: Optional[str] = None
+    telefono_saliente: Optional[str] = None
+    nombramiento_saliente: Optional[str] = None
+    asignacion_saliente: Optional[str] = None
+    asignado_por_saliente: Optional[str] = None
     creador_id: Optional[int] = None
     entrante_id: Optional[int] = None
     saliente_id: Optional[int] = None
@@ -469,6 +492,13 @@ class ActaWithUnidadResponse(ActaResponse):
     model_config = ConfigDict(from_attributes=True)
 
 class ActaUpdate(BaseModel):
+    lugar_acta: Optional[str] = None
+    ine_saliente: Optional[str] = None
+    domicilio_saliente: Optional[str] = None
+    telefono_saliente: Optional[str] = None
+    nombramiento_saliente: Optional[str] = None
+    asignacion_saliente: Optional[str] = None
+    asignado_por_saliente: Optional[str] = None
     entrante_id: Optional[int] = Field(None, gt=0)
     saliente_id: Optional[int] = Field(None, gt=0)
     comisionados: Optional[List[int]] = None

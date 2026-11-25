@@ -13,6 +13,11 @@ from .models import Anexos, UnidadResponsable, UserRoles
 from .schemas import AnexoResponse
 
 FORMATO_REPORTE = "anexo-carta-v1"
+CLAVES_ANEXOS_PDF = frozenset({"PP01", "SGC01", "EO01", "PPA01", "RF18", "RF10"})
+
+
+def fojas_por_defecto_pdf(anexo):
+    return (anexo.clave or "").strip().upper() in CLAVES_ANEXOS_PDF
 
 
 def consultar_anexo(db, anexo_id, bloquear=False):
@@ -40,15 +45,26 @@ def revision_reporte(anexo):
 
 
 def reporte_vigente(anexo):
+    if fojas_por_defecto_pdf(anexo):
+        return True
     return (anexo.fojas_reporte is not None and anexo.reporte_formato == FORMATO_REPORTE
             and anexo.reporte_revision == revision_reporte(anexo))
+
+
+def resumen_anexo_reporte(anexo):
+    datos = AnexoResponse.model_validate(anexo, from_attributes=True).model_dump()
+    datos["reporte_vigente"] = reporte_vigente(anexo)
+    datos["fojas_por_defecto"] = fojas_por_defecto_pdf(anexo)
+    if datos["fojas_por_defecto"]:
+        datos["fojas_reporte"] = 1
+    return datos
 
 
 def detalle_anexo_reporte(db, anexo_id):
     anexo = consultar_anexo(db, anexo_id)
     unidad = anexo.unidad_responsable
     padre = unidad.padre if unidad else None
-    datos = AnexoResponse.model_validate(anexo, from_attributes=True).model_dump()
+    datos = resumen_anexo_reporte(anexo)
     datos.update(unidad_responsable_nombre=unidad.nombre if unidad else "Unidad no disponible",
                  unidad_padre_id=padre.id_unidad if padre else None, unidad_padre_nombre=padre.nombre if padre else None,
                  creador_nombre=anexo.creador.username if anexo.creador else "Creador no disponible",
@@ -62,6 +78,8 @@ def registrar_reporte_anexo(db, anexo_id, actor, contenido, revision, formato, c
         anexo = consultar_anexo(db, anexo_id, bloquear=True)
         if actor.role not in {UserRoles.ADMIN, UserRoles.AUDITOR} and actor.id != anexo.creador_id:
             raise HTTPException(403, "Solo el creador, un administrador o un auditor puede registrar el reporte")
+        if fojas_por_defecto_pdf(anexo):
+            raise HTTPException(400, "Los anexos de tipo PDF tienen una foja por defecto y no requieren cálculo")
         if formato != FORMATO_REPORTE or revision != revision_reporte(anexo):
             raise HTTPException(409, "El anexo o su formato cambió. Actualiza los datos y genera el reporte nuevamente.")
         if len(contenido) > 25 * 1024 * 1024:

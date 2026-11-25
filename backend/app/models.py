@@ -4,10 +4,8 @@ from .database import Base
 from datetime import datetime, date, time
 from sqlalchemy import ForeignKey
 from sqlalchemy.sql import func
-from typing import List, Optional
 from sqlalchemy import Boolean
 from enum import Enum as PyEnum
-from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String, Date, Time, DateTime, Text
 from sqlalchemy import Enum, JSON, Boolean, TIMESTAMP
 
@@ -168,19 +166,6 @@ class UnidadResponsable(Base):
     # 👉 RELACIÓN CON ANEXOS (esto es lo nuevo)
     anexos = relationship("Anexos", back_populates="unidad_responsable")
 
-""" class UnidadJerarquicaResponse(BaseModel):
-    id_unidad: int
-    nombre: str
-    tipo_unidad: Optional[str]
-    nivel: int
-    unidad_padre_id: Optional[int]
-    responsable: Optional[User]
-    children: List["UnidadJerarquicaResponse"] = []
-
-    class Config:
-        orm_mode = True
-
-UnidadJerarquicaResponse.update_forward_refs()  # Para resolver la referencia circular """
 
 
 
@@ -196,6 +181,7 @@ class ActaEntregaRecepcion(Base):
     comisionados = Column(JSON, nullable=False, default=list, server_default="[]")
     comisiones = Column(JSON, nullable=False, default=list, server_default="[]")
     folio = Column(String)
+    lugar_acta = Column(String, nullable=True)
     fecha = Column(String)
     hora = Column(String)
     comisionado = Column(String)
@@ -211,6 +197,12 @@ class ActaEntregaRecepcion(Base):
     domicilio_entrante = Column(String, nullable=True)
     telefono_entrante = Column(String, nullable=True)
     saliente = Column(String, nullable=True)
+    ine_saliente = Column(String, nullable=True)
+    domicilio_saliente = Column(String, nullable=True)
+    telefono_saliente = Column(String, nullable=True)
+    nombramiento_saliente = Column(String, nullable=True)
+    asignacion_saliente = Column(String, nullable=True)
+    asignado_por_saliente = Column(String, nullable=True)
     fecha_fin_labores = Column(String, nullable=True)
     testigo_entrante = Column(String, nullable=True)
     ine_testigo_entrante = Column(String, nullable=True)

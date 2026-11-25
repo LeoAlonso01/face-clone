@@ -9,6 +9,42 @@ from sqlalchemy.orm import selectinload
 from .models import ActaEntregaRecepcion, Anexos, UnidadResponsable, User, UserRoles
 
 
+
+ESTADOS_ACTA_EDITABLES = {"Borrador", "Pendiente", "Revisión"}
+
+
+def validar_edicion_acta(db, acta, actor, cambios):
+    es_gestor = actor.role in {UserRoles.ADMIN, UserRoles.AUDITOR}
+    es_creador = actor.role == UserRoles.USER and acta.creador_id is not None and actor.id == acta.creador_id
+    if not (es_gestor or es_creador):
+        raise HTTPException(403, "No tienes permiso para editar esta acta")
+    if acta.estado not in ESTADOS_ACTA_EDITABLES:
+        raise HTTPException(400, "El acta está cerrada y no admite modificaciones")
+    if "estado" in cambios:
+        permitidos = {"Pendiente", "Revisión", "Completada"}
+        if acta.estado == "Borrador":
+            permitidos.add("Borrador")
+        if cambios["estado"] not in permitidos:
+            raise HTTPException(400, "Selecciona un estado válido: Pendiente, Revisión o Completada")
+    for campo in ("entrante", "saliente"):
+        if campo in cambios and (not isinstance(cambios[campo], str) or not cambios[campo].strip()):
+            raise HTTPException(400, "Captura el nombre completo de los funcionarios")
+    cambia_unidad = "unidad_responsable" in cambios and cambios["unidad_responsable"] != acta.unidad_responsable
+    cambia_saliente = "saliente_id" in cambios and cambios["saliente_id"] != acta.saliente_id
+    if cambia_unidad or cambia_saliente:
+        tiene_anexos = db.query(Anexos.id).filter(Anexos.acta_id == acta.id, Anexos.is_deleted.is_not(True)).first() is not None
+        if tiene_anexos:
+            raise HTTPException(409, "El acta tiene anexos asociados: no puedes cambiar la unidad ni la cuenta del saliente")
+    if cambia_unidad:
+        if not db.query(UnidadResponsable.id_unidad).filter(UnidadResponsable.id_unidad == cambios["unidad_responsable"]).first():
+            raise HTTPException(400, "La unidad responsable no existe")
+    if "folio" in cambios and cambios["folio"] != acta.folio:
+        if not isinstance(cambios["folio"], str) or not cambios["folio"].strip():
+            raise HTTPException(400, "Captura el folio del acta")
+        repetido = db.query(ActaEntregaRecepcion.id).filter(ActaEntregaRecepcion.folio == cambios["folio"], ActaEntregaRecepcion.id != acta.id).first()
+        if repetido:
+            raise HTTPException(409, "Ya existe un acta con ese folio")
+
 def preparar_participantes(db, datos):
     """Conservar el nombre del acta, independiente del username de la cuenta."""
     datos = dict(datos)
@@ -109,6 +145,7 @@ def crear_acta_con_anexos(db, acta, creador_id):
             raise HTTPException(400, f"Ya existe un acta con el folio {acta.folio}")
 
         datos = acta.model_dump(exclude_unset=True)
+        datos["estado"] = acta.estado or "Pendiente"
         revision = datos.pop("anexos_revision", None)
         anexos_creador_id = creador_anexos_para_acta(db, creador_id, acta.saliente_id)
         ids_confirmados = None
@@ -140,7 +177,6 @@ def cargar_acta(db, acta_id):
 
 
 def datos_acta_documento(db, acta_id):
-    from .schemas import AnexoResponse
     acta = db.query(ActaEntregaRecepcion).populate_existing().options(
         selectinload(ActaEntregaRecepcion.unidad)
     ).filter(ActaEntregaRecepcion.id == acta_id).first()
@@ -153,11 +189,10 @@ def datos_acta_documento(db, acta_id):
     anexos = db.query(Anexos).populate_existing().filter(
         Anexos.acta_id == acta_id, Anexos.is_deleted.is_not(True)
     ).order_by(Anexos.id).all()
-    from .anexo_reportes import reporte_vigente
+    from .anexo_reportes import resumen_anexo_reporte
     datos["anexos"] = []
     for anexo in anexos:
-        item = AnexoResponse.model_validate(anexo, from_attributes=True).model_dump()
-        item["reporte_vigente"] = reporte_vigente(anexo)
+        item = resumen_anexo_reporte(anexo)
         if not item["reporte_vigente"]:
             item["fojas_reporte"] = None
         datos["anexos"].append(item)

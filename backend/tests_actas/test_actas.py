@@ -15,16 +15,16 @@ from fastapi import FastAPI, Depends, HTTPException, Request, status, UploadFile
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import make_url
-from sqlalchemy.orm import Session, declarative_base, selectinload
+from sqlalchemy.orm import Session, declarative_base, selectinload, joinedload
 from sqlalchemy.pool import StaticPool
 
 database = types.ModuleType("app.database")
 database.Base = declarative_base()
 sys.modules["app.database"] = database
 from app.models import ActaEntregaRecepcion, Anexos, UnidadResponsable, User, UserRoles
-from app.schemas import AnexoDetalleResponse, ActaCreate, ActaResponse, ActaUpdate, ActaVistaPreviaRequest, ActaVistaPreviaResponse, ActaDocumentoResponse
-from app.anexo_reportes import detalle_anexo_reporte, registrar_reporte_anexo
-from app.actas_service import crear_acta_con_anexos, cargar_acta, preparar_participantes, vista_previa_acta, datos_acta_documento
+from app.schemas import AnexoResponse, AnexoDetalleResponse, ActaCreate, ActaResponse, ActaUpdate, ActaVistaPreviaRequest, ActaVistaPreviaResponse, ActaDocumentoResponse
+from app.anexo_reportes import detalle_anexo_reporte, registrar_reporte_anexo, resumen_anexo_reporte
+from app.actas_service import crear_acta_con_anexos, cargar_acta, preparar_participantes, vista_previa_acta, datos_acta_documento, validar_edicion_acta
 
 
 @pytest.fixture
@@ -58,17 +58,17 @@ def setup(engine):
     def get_current_user():
         return actor
     app = FastAPI()
-    namespace = dict(AnexoDetalleResponse=AnexoDetalleResponse, detalle_anexo_reporte=detalle_anexo_reporte, registrar_reporte_anexo=registrar_reporte_anexo, UploadFile=UploadFile, File=File, Form=Form, app=app, get_db=get_db, get_current_user=get_current_user, Session=Session,
+    namespace = dict(Anexos=Anexos, UnidadResponsable=UnidadResponsable, List=list, AnexoResponse=AnexoResponse, joinedload=joinedload, resumen_anexo_reporte=resumen_anexo_reporte, AnexoDetalleResponse=AnexoDetalleResponse, detalle_anexo_reporte=detalle_anexo_reporte, registrar_reporte_anexo=registrar_reporte_anexo, UploadFile=UploadFile, File=File, Form=Form, app=app, get_db=get_db, get_current_user=get_current_user, Session=Session,
                      User=User, Request=Request, Depends=Depends, HTTPException=HTTPException, status=status,
                      ActaCreate=ActaCreate, ActaResponse=ActaResponse, ActaUpdate=ActaUpdate,
                      ActaVistaPreviaRequest=ActaVistaPreviaRequest, ActaVistaPreviaResponse=ActaVistaPreviaResponse, vista_previa_acta=vista_previa_acta,
                      ActaDocumentoResponse=ActaDocumentoResponse, datos_acta_documento=datos_acta_documento,
                      ActaEntregaRecepcion=ActaEntregaRecepcion, selectinload=selectinload,
                      crear_acta_con_anexos=crear_acta_con_anexos, cargar_acta=cargar_acta,
-                     preparar_participantes=preparar_participantes, logger=logging.getLogger("actas_test"),
+                     validar_edicion_acta=validar_edicion_acta, preparar_participantes=preparar_participantes, logger=logging.getLogger("actas_test"),
                      create_audit_log=lambda **kwargs: None)
     tree = ast.parse((Path(__file__).resolve().parents[1] / "app/main.py").read_text(encoding="utf-8"))
-    functions = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {"read_anexo", "guardar_reporte_anexo", "crear_acta", "read_acta", "update_acta", "previsualizar_acta", "read_acta_documento"}]
+    functions = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {"read_anexos", "read_anexo", "guardar_reporte_anexo", "crear_acta", "read_acta", "update_acta", "previsualizar_acta", "read_acta_documento"}]
     exec(compile(ast.Module(body=functions, type_ignores=[]), "main_actas_endpoints", "exec"), namespace)
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client, db, namespace
@@ -451,4 +451,258 @@ def test_reporte_rechaza_archivos_y_actores_incorrectos(setup, tipo):
         namespace['app'].dependency_overrides[namespace['get_current_user']] = lambda: db.get(User, 4)
     response = client.post('/anexos/1/reporte', data={'revision': detalle['reporte_revision_actual'], 'formato': detalle['reporte_formato_actual']}, files={'file': ('reporte.pdf', contenido, 'application/pdf')})
     assert response.status_code == (403 if tipo == 'sin_permiso' else 422), response.text
+    assert db.get(Anexos, 1).fojas_reporte is None
+
+
+DATOS_FUNCIONARIOS = {
+    "lugar_acta": "Uruapan, Michoacán",
+    "ine_entrante": "0000123456789",
+    "domicilio_entrante": "Domicilio de prueba entrante",
+    "ine_saliente": "0000987654321",
+    "domicilio_saliente": "Domicilio de prueba saliente",
+    "telefono_saliente": "4430000000",
+    "nombramiento_saliente": "NOM-2025-01",
+    "asignacion_saliente": "nombramiento",
+    "asignado_por_saliente": "rectoria",
+}
+NUEVOS_CAMPOS_ACTA = ("lugar_acta", "ine_saliente", "domicilio_saliente", "telefono_saliente",
+                       "nombramiento_saliente", "asignacion_saliente", "asignado_por_saliente")
+
+
+def test_datos_funcionarios_se_guardan_consultan_y_actualizan(setup):
+    client, db, _ = setup
+    created = client.post("/actas", json=payload(estado="Borrador", **DATOS_FUNCIONARIOS))
+    assert created.status_code == 201, created.text
+    acta_id = created.json()["id"]
+    for response in (created, client.get(f"/actas/{acta_id}"), client.get(f"/actas/{acta_id}/datos-pdf")):
+        assert response.status_code in (200, 201), response.text
+        assert all(response.json()[key] == value for key, value in DATOS_FUNCIONARIOS.items())
+    db.expire_all()
+    assert db.get(ActaEntregaRecepcion, acta_id).ine_saliente == "0000987654321"
+    updated = client.put(f"/actas/{acta_id}", json={"lugar_acta": "Zamora, Michoacán", "ine_saliente": "0000000000007"})
+    assert updated.status_code == 200, updated.text
+    reread = client.get(f"/actas/{acta_id}/datos-pdf").json()
+    assert reread["lugar_acta"] == "Zamora, Michoacán"
+    assert reread["ine_saliente"] == "0000000000007"
+    assert reread["domicilio_saliente"] == DATOS_FUNCIONARIOS["domicilio_saliente"]
+
+
+def test_nuevos_campos_opcionales_no_modifican_otras_actas(setup):
+    client, db, _ = setup
+    legacy = client.post("/actas", json=payload(folio="HISTORICA"))
+    assert legacy.status_code == 201, legacy.text
+    before = legacy.json()
+    assert all(before[key] is None for key in NUEVOS_CAMPOS_ACTA)
+    assert client.post("/actas", json=payload(folio="NUEVA", **DATOS_FUNCIONARIOS)).status_code == 201
+    assert client.get(f"/actas/{before['id']}").json() == before
+
+
+def test_migracion_datos_funcionarios_aditiva_e_idempotente(setup, engine):
+    if engine.dialect.name != "postgresql":
+        pytest.skip("La migración requiere PostgreSQL")
+    client, db, _ = setup
+    created = client.post("/actas", json=payload()).json()
+    anexo(db, 1, acta=created["id"])
+    db.commit()
+    with engine.begin() as connection:
+        for name in NUEVOS_CAMPOS_ACTA:
+            connection.execute(text(f"ALTER TABLE acta_entrega_recepcion DROP COLUMN {name}"))
+    sql = (Path(__file__).resolve().parents[1] / "migrations/007_actas_datos_funcionarios.sql").read_text(encoding="utf-8")
+    for _ in range(2):
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.exec_driver_sql(sql)
+    db.expire_all()
+    acta = db.get(ActaEntregaRecepcion, created["id"])
+    assert all(getattr(acta, key) is None for key in NUEVOS_CAMPOS_ACTA)
+    assert acta.folio == created["folio"]
+    assert acta.actualizado_en.isoformat() == created["actualizado_en"]
+    assert db.get(Anexos, 1).acta_id == created["id"]
+
+
+@pytest.mark.parametrize("estado", ["Pendiente", "Revisión", "Borrador"])
+def test_edicion_permitida_en_estados_abiertos(setup, estado):
+    client, db, _ = setup
+    saved = client.post("/actas", json=payload(estado=estado)).json()
+    result = client.put(f"/actas/{saved['id']}", json={"lugar_acta": "Uruapan, Michoacán", "observaciones": "Corregida", "ine_saliente": "000123"})
+    assert result.status_code == 200, result.text
+    assert result.json()["estado"] == estado
+    assert result.json()["lugar_acta"] == "Uruapan, Michoacán"
+    assert client.get(f"/actas/{saved['id']}/datos-pdf").json()["ine_saliente"] == "000123"
+
+
+def test_transiciones_y_cierre_definitivo_del_acta(setup):
+    client, db, _ = setup
+    saved = client.post("/actas", json=payload()).json()
+    url = f"/actas/{saved['id']}"
+    for estado in ["Revisión", "Pendiente", "Completada"]:
+        result = client.put(url, json={"estado": estado})
+        assert result.status_code == 200, result.text
+        assert result.json()["estado"] == estado
+    before = client.get(url).json()
+    for changes in [{"estado": "Pendiente"}, {"observaciones": "No permitido"}, {}]:
+        result = client.put(url, json=changes)
+        assert result.status_code == 400
+        assert client.get(url).json() == before
+
+
+@pytest.mark.parametrize("estado", [None, "", "Revision", "Inexistente", "Borrador"])
+def test_estado_invalido_no_modifica_el_acta(setup, estado):
+    client, db, _ = setup
+    saved = client.post("/actas", json=payload()).json()
+    result = client.put(f"/actas/{saved['id']}", json={"estado": estado, "folio": "CAMBIO-NO-GUARDADO"})
+    assert result.status_code == 400
+    assert client.get(f"/actas/{saved['id']}").json() == saved
+
+
+@pytest.mark.parametrize("role,creador,permitido", [(UserRoles.ADMIN, 4, True), (UserRoles.AUDITOR, None, True),
+    (UserRoles.USER, 1, True), (UserRoles.USER, 4, False), (UserRoles.USER, None, False)])
+def test_permisos_de_edicion_por_rol_y_creador(setup, role, creador, permitido):
+    client, db, _ = setup
+    saved = client.post("/actas", json=payload()).json()
+    db.get(User, 1).role = role
+    db.get(ActaEntregaRecepcion, saved["id"]).creador_id = creador
+    db.commit()
+    result = client.put(f"/actas/{saved['id']}", json={"observaciones": "Actualizada"})
+    assert result.status_code == (200 if permitido else 403), result.text
+
+
+@pytest.mark.parametrize("changes", [{"unidad_responsable": 10}, {"saliente_id": 4}])
+def test_anexos_bloquean_cambio_de_unidad_y_cuenta_saliente(setup, changes):
+    client, db, _ = setup
+    saved = client.post("/actas", json=payload()).json()
+    anexo(db, 1, acta=saved["id"])
+    db.commit()
+    before = client.get(f"/actas/{saved['id']}").json()
+    result = client.put(f"/actas/{saved['id']}", json=changes)
+    assert result.status_code == 409, result.text
+    assert client.get(f"/actas/{saved['id']}").json() == before
+    assert db.get(Anexos, 1).acta_id == saved["id"]
+    corrected = client.put(f"/actas/{saved['id']}", json={"saliente": "Nombre corregido", "domicilio_saliente": "Domicilio corregido"})
+    assert corrected.status_code == 200, corrected.text
+    assert db.get(Anexos, 1).acta_id == saved["id"]
+
+
+def test_sin_anexos_permite_cambiar_contexto_sin_reasociar_pendientes(setup):
+    client, db, _ = setup
+    saved = client.post("/actas", json=payload()).json()
+    anexo(db, 1, creador=4, unidad=10)
+    db.commit()
+    result = client.put(f"/actas/{saved['id']}", json={"unidad_responsable": 10, "saliente_id": 4})
+    assert result.status_code == 200, result.text
+    assert result.json()["anexos"] == []
+    assert db.get(Anexos, 1).acta_id is None
+
+
+
+def test_guardado_concurrente_no_reabre_un_acta_completada(setup, engine):
+    if engine.dialect.name != "postgresql":
+        pytest.skip("El bloqueo por fila requiere PostgreSQL")
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    client, db, namespace = setup
+    created = client.post("/actas", json=payload()).json()
+    acta_id = created["id"]
+    db.rollback()
+    intento = Event()
+    with Session(engine) as cierre:
+        cierre.query(ActaEntregaRecepcion).filter(ActaEntregaRecepcion.id == acta_id).with_for_update().one()
+        actor = cierre.get(User, 1)
+        def guardar():
+            with Session(engine) as otra:
+                otro_actor = otra.get(User, 1)
+                # Precarca una copia anterior al cierre para verificar populate_existing.
+                otra.get(ActaEntregaRecepcion, acta_id)
+                intento.set()
+                try:
+                    namespace["update_acta"](acta_id, ActaUpdate(observaciones="Guardado concurrente"), db=otra, current_user=otro_actor, request=None)
+                except HTTPException as error:
+                    return error.status_code
+                return 200
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            futuro = pool.submit(guardar)
+            assert intento.wait(10)
+            namespace["update_acta"](acta_id, ActaUpdate(estado="Completada"), db=cierre, current_user=actor, request=None)
+            assert futuro.result(timeout=15) == 400
+    db.expire_all()
+    final = db.get(ActaEntregaRecepcion, acta_id)
+    assert final.estado == "Completada"
+    assert final.observaciones is None
+
+
+
+def test_listado_de_anexos_publica_fojas_vigentes_y_detecta_cambios(setup):
+    client, db, _ = setup
+    anexo(db, 1)
+    db.commit()
+    listado = client.get('/anexos')
+    assert listado.status_code == 200, listado.text
+    assert listado.json()[0]['reporte_vigente'] is False
+    detalle = client.get('/anexos/1').json()
+    before = db.get(Anexos, 1).actualizado_en
+    response = client.post('/anexos/1/reporte', data={'revision': detalle['reporte_revision_actual'], 'formato': detalle['reporte_formato_actual']}, files={'file': ('conteo.pdf', pdf_reporte(detalle['reporte_revision_actual'], 4), 'application/pdf')})
+    assert response.status_code == 200, response.text
+    row = client.get('/anexos').json()[0]
+    assert row['fojas_reporte'] == 4 and row['reporte_vigente'] is True
+    assert db.get(Anexos, 1).actualizado_en == before
+    # Cambiar datos invalida el conteo, incluso sin cambiar la fecha.
+    db.get(Anexos, 1).datos = [{'dato': 'modificado el mismo día'}]
+    db.commit()
+    row = client.get('/anexos').json()[0]
+    assert row['fojas_reporte'] == 4 and row['reporte_vigente'] is False
+    db.get(Anexos, 1).is_deleted = True
+    db.commit()
+    assert client.get('/anexos').json() == []
+
+
+def test_listado_reporte_vigente_se_invalida_si_cambia_el_nombre_de_la_unidad(setup):
+    client, db, _ = setup
+    anexo(db, 1)
+    db.commit()
+    detalle = client.get('/anexos/1').json()
+    response = client.post('/anexos/1/reporte', data={'revision': detalle['reporte_revision_actual'], 'formato': detalle['reporte_formato_actual']}, files={'file': ('conteo.pdf', pdf_reporte(detalle['reporte_revision_actual']), 'application/pdf')})
+    assert response.status_code == 200
+    db.get(UnidadResponsable, 212).nombre = 'Nombre nuevo de la unidad'
+    db.commit()
+    listado = client.get('/anexos')
+    assert listado.status_code == 200, listado.text
+    assert listado.json()[0]['reporte_vigente'] is False
+
+
+
+@pytest.mark.parametrize("clave", ["PP01", "SGC01", "EO01", "PPA01", "RF18", "RF10"])
+def test_anexos_pdf_tienen_una_foja_por_defecto_en_listado_detalle_y_acta(setup, clave):
+    client, db, _ = setup
+    anexo(db, 1)
+    item = db.get(Anexos, 1)
+    item.clave = clave
+    item.datos = [{"url": "https://example.invalid/adjunto.pdf"}]
+    item.fojas_reporte = 9  # Un cálculo anterior no sustituye la nueva regla.
+    db.commit()
+    detalle = client.get('/anexos/1').json()
+    listado = client.get('/anexos').json()[0]
+    for datos in (detalle, listado):
+        assert datos['fojas_reporte'] == 1
+        assert datos['reporte_vigente'] is True
+        assert datos['fojas_por_defecto'] is True
+    created = client.post('/actas', json=payload()).json()
+    documento = client.get(f"/actas/{created['id']}/datos-pdf").json()
+    assert documento['anexos'][0]['fojas_reporte'] == 1
+    assert documento['anexos'][0]['fojas_por_defecto'] is True
+    assert db.get(Anexos, 1).fojas_reporte == 9  # No reescribe el registro histórico.
+    assert db.get(Anexos, 1).reporte_generado_en is None
+
+
+def test_anexo_tabular_sigue_necesitando_calculo_y_pdf_no_lo_admite(setup):
+    client, db, _ = setup
+    anexo(db, 1)
+    db.commit()
+    datos = client.get('/anexos/1').json()
+    assert datos['fojas_por_defecto'] is False
+    assert datos['fojas_reporte'] is None
+    assert datos['reporte_vigente'] is False
+    db.get(Anexos, 1).clave = 'PP01'
+    db.commit()
+    detalle = client.get('/anexos/1').json()
+    response = client.post('/anexos/1/reporte', data={'revision': detalle['reporte_revision_actual'], 'formato': detalle['reporte_formato_actual']}, files={'file': ('conteo.pdf', pdf_reporte(detalle['reporte_revision_actual']), 'application/pdf')})
+    assert response.status_code == 400
     assert db.get(Anexos, 1).fojas_reporte is None
