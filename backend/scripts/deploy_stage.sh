@@ -29,11 +29,16 @@ sudo docker exec serumich-stage-api python -c 'from app.database import engine; 
 cp "$config" "$respaldo/backend.env"
 candidato="$respaldo/candidato"
 contexto="$respaldo/contexto"
-test ! -e "$candidato"
-test ! -e "$contexto"
-git worktree add --detach "$candidato" "$revision"
+if [ -e "$candidato" ]; then
+  [ "$(git -C "$candidato" rev-parse HEAD)" = "$revision" ] || { echo "Candidato de otra revisión; revisar manualmente"; exit 1; }
+  git -C "$candidato" diff --cached --quiet
+  git -C "$candidato" diff --quiet -- . ':(exclude)backend/app/database.py'
+else
+  git worktree add --detach "$candidato" "$revision"
+fi
 cp "$respaldo/database.py" "$candidato/backend/app/database.py"
-mkdir "$contexto"
+test ! -L "$contexto"
+mkdir -p "$contexto"
 cp "$candidato/backend/requirements.txt" "$contexto/requirements.txt"
 cp -a "$candidato/backend/app" "$contexto/app"
 cat > "$contexto/Dockerfile" <<'DOCKERFILE'
