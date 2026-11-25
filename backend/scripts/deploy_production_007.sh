@@ -46,6 +46,7 @@ test "$pid" -gt 1
 "$python" - "$pid" "$candidato/backend" <<'PY'
 import os
 import sys
+from ipaddress import ip_interface
 from pathlib import Path
 entorno = {}
 for entrada in Path('/proc', sys.argv[1], 'environ').read_bytes().split(b'\0'):
@@ -63,7 +64,8 @@ with engine.connect() as conexion:
         'SELECT current_database(), inet_server_addr()::text, inet_server_port()'
     )).one()
 assert base == 'facebook_clone', 'Base inesperada'
-assert host in (None, '127.0.0.1', '::1', '172.16.123.109'), 'Servidor de base inesperado'
+direccion = str(ip_interface(host).ip) if host else None
+assert direccion in (None, '127.0.0.1', '::1', '172.16.123.109'), 'Servidor de base inesperado'
 assert puerto in (None, 5432), 'Puerto de base inesperado'
 from app.main import app
 spec = app.openapi()
